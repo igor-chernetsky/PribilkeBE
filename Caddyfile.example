@@ -1,7 +1,5 @@
-# Rename to Caddyfile and replace api.yourdomain.com with your domain.
-# Requires ports 80 and 443 open in Security Group.
-# DNS A-record must point to Elastic IP.
+# Copy to /etc/caddy/Caddyfile on EC2
 
-api.yourdomain.com {
+pribilka.webredirect.org {
     reverse_proxy 127.0.0.1:8000
 }

@@ -125,7 +125,39 @@ curl http://127.0.0.1:8000/api/v1/market-summary
 
 ---
 
-## Шаг 9. HTTPS через Caddy (если есть домен)
+## Шаг 9. Домен Dynu (pribilka.webredirect.org)
+
+В [Dynu Control Panel](https://www.dynu.com/ControlPanel) → **DDNS Services** → ваш hostname.
+
+**Важно:** используйте **A-запись на Elastic IP**, а не «Web Redirect / Port Forwarding» — иначе HTTPS и API работать не будут.
+
+1. Откройте hostname `pribilka.webredirect.org`
+2. В разделе **IPv4 Address** укажите **Elastic IP** вашего EC2
+3. Сохраните
+
+Проверка с вашего компьютера (подождите 1–5 мин):
+
+```bash
+dig +short pribilka.webredirect.org
+# должен вернуть ваш Elastic IP
+```
+
+### Security Group
+
+Добавьте правила (если ещё нет):
+
+| Type  | Port | Source    |
+|-------|------|-----------|
+| HTTP  | 80   | 0.0.0.0/0 |
+| HTTPS | 443  | 0.0.0.0/0 |
+
+Порт **8000 наружу не открывайте** — доступ только через Caddy на 443.
+
+---
+
+## Шаг 10. HTTPS через Caddy
+
+На EC2 (API должен уже работать на `127.0.0.1:8000`):
 
 ```bash
 sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
@@ -133,24 +165,47 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --d
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
 sudo apt update && sudo apt install -y caddy
 
-cp Caddyfile.example Caddyfile
-nano Caddyfile   # заменить api.yourdomain.com
-
-sudo cp Caddyfile /etc/caddy/Caddyfile
+cd ~/PribilkaBE
+sudo cp Caddyfile.example /etc/caddy/Caddyfile
+sudo systemctl enable caddy
 sudo systemctl reload caddy
 ```
 
-В DNS добавьте A-запись: `api.yourdomain.com` → Elastic IP.
+Caddy автоматически получит сертификат Let's Encrypt для `pribilka.webredirect.org`.
 
 Проверка:
 
 ```bash
-curl https://api.yourdomain.com/health
+curl https://pribilka.webredirect.org/health
+curl https://pribilka.webredirect.org/api/v1/market-summary
 ```
+
+Документация API: `https://pribilka.webredirect.org/docs`
+
+Если Caddy не стартует — смотрите логи:
+
+```bash
+sudo journalctl -u caddy -f
+```
+
+Частые причины: DNS ещё не обновился, порты 80/443 закрыты в Security Group.
 
 ---
 
-## Шаг 10. Автозапуск после перезагрузки
+## Шаг 11. Base URL для приложения
+
+```
+https://pribilka.webredirect.org/api/v1
+```
+
+Примеры:
+- Health: `https://pribilka.webredirect.org/health`
+- Депозиты: `https://pribilka.webredirect.org/api/v1/deposits`
+- Swagger: `https://pribilka.webredirect.org/docs`
+
+---
+
+## Шаг 12. Автозапуск после перезагрузки
 
 Docker с `restart: unless-stopped` в `docker-compose.prod.yml` поднимет контейнеры автоматически.
 
