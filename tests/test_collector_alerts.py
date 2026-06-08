@@ -47,6 +47,32 @@ def test_alert_suppressed_by_cooldown(mock_telegram, mock_get_redis):
 
 @patch("pribilka.services.collector_alerts.get_redis")
 @patch("pribilka.services.collector_alerts._send_telegram")
+def test_no_alert_for_supplementary_empty_parser(mock_telegram, mock_get_redis):
+    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
+
+    results = [
+        ParserResult(
+            offers=[],
+            parser_name="BankierDepositParser",
+            institution_name="Bankier.pl (ranking)",
+            status=ParseStatus.EMPTY,
+            alert_on_empty=False,
+        ),
+        ParserResult(
+            offers=[object()],
+            parser_name="PkoDepositParser",
+            institution_name="PKO Bank Polski",
+            status=ParseStatus.OK,
+        ),
+    ]
+
+    report_deposit_parse_results(results, total_records=3)
+
+    mock_telegram.assert_not_called()
+
+
+@patch("pribilka.services.collector_alerts.get_redis")
+@patch("pribilka.services.collector_alerts._send_telegram")
 def test_no_alert_when_all_ok(mock_telegram, mock_get_redis):
     mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
 

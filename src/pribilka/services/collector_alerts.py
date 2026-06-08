@@ -14,7 +14,12 @@ ALERT_KEY_PREFIX = "collector_alert"
 
 def report_deposit_parse_results(results: list[ParserResult], total_records: int) -> None:
     """Notify admin when parsers fail or return no data."""
-    problems = [r for r in results if r.status in (ParseStatus.ERROR, ParseStatus.EMPTY)]
+    problems = [
+        r
+        for r in results
+        if r.status == ParseStatus.ERROR
+        or (r.status == ParseStatus.EMPTY and r.alert_on_empty)
+    ]
     if not problems and total_records > 0:
         return
 

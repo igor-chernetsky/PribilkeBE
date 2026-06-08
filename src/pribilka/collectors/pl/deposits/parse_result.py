@@ -17,6 +17,7 @@ class ParserResult:
     institution_name: str
     status: ParseStatus
     error_message: str | None = None
+    alert_on_empty: bool = True
 
     @property
     def offer_count(self) -> int:

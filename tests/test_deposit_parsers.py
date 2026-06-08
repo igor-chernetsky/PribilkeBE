@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from pribilka.collectors.deposit_collector import PolandDepositCollector
+from pribilka.collectors.pl.deposits.bankier import BankierDepositParser
 from pribilka.collectors.pl.deposits.ing import IngDepositParser
 from pribilka.collectors.pl.deposits.mbank import MBankDepositParser
 from pribilka.collectors.pl.deposits.pko import PkoDepositParser
@@ -24,6 +25,37 @@ def test_ing_parser_extracts_pln_deposits():
         o.product_name == "Lokata terminowa Plus 6M" and o.annual_interest_rate == 3.25
         for o in offers
     )
+
+
+def test_ing_parser_extracts_rates_pdf():
+    pdf_text = (FIXTURES / "ing_rates_pdf.txt").read_text()
+    offers = IngDepositParser()._parse_rates_pdf(pdf_text.encode("cp1250"))
+
+    assert len(offers) == 5
+    assert any(o.term_months == 12 and o.annual_interest_rate == 2.0 for o in offers)
+    assert any(o.product_name == "Lokata terminowa Plus 12M" for o in offers)
+
+
+def test_ing_parser_extracts_rates_table():
+    html = (FIXTURES / "ing_rates_table.html").read_text()
+    offers = IngDepositParser()._parse_rates_table(html)
+
+    assert len(offers) == 5
+    assert any(o.term_months == 6 and o.annual_interest_rate == 1.5 for o in offers)
+
+
+def test_bankier_parser_extracts_offer_cards():
+    html = (FIXTURES / "bankier_lokaty.html").read_text()
+    offers = BankierDepositParser()._parse_offer_cards(html)
+
+    assert len(offers) == 2
+    assert any(
+        o.institution_name == "VeloBank"
+        and o.term_months == 6
+        and o.annual_interest_rate == 6.0
+        for o in offers
+    )
+    assert any(o.term_months == 1 and o.annual_interest_rate == 5.5 for o in offers)
 
 
 def test_pko_parser_extracts_term_deposits():

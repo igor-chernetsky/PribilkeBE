@@ -11,6 +11,7 @@ class BankDepositParser(ABC):
     institution_name: str
     bank_slug: str
     source_name: str
+    alert_on_empty: bool = True
 
     @abstractmethod
     def parse(self) -> list[DepositOffer]:
@@ -28,6 +29,7 @@ class BankDepositParser(ABC):
                     institution_name=self.institution_name,
                     status=ParseStatus.EMPTY,
                     error_message="Parser returned no offers — possible HTML layout change",
+                    alert_on_empty=self.alert_on_empty,
                 )
 
             logger.info("%s: collected %d deposit offers", self.institution_name, len(offers))
@@ -36,6 +38,7 @@ class BankDepositParser(ABC):
                 parser_name=parser_name,
                 institution_name=self.institution_name,
                 status=ParseStatus.OK,
+                alert_on_empty=self.alert_on_empty,
             )
         except Exception as exc:
             logger.exception("%s: deposit parsing failed", self.institution_name)
@@ -45,6 +48,7 @@ class BankDepositParser(ABC):
                 institution_name=self.institution_name,
                 status=ParseStatus.ERROR,
                 error_message=str(exc),
+                alert_on_empty=self.alert_on_empty,
             )
 
     def safe_parse(self) -> list[DepositOffer]:

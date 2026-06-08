@@ -23,6 +23,8 @@ class BankierDepositParser(BankDepositParser):
     institution_name = "Bankier.pl (ranking)"
     bank_slug = "bankier"
     source_name = "bankier_aggregator"
+    # Supplementary aggregator — direct bank scrapers are the primary sources.
+    alert_on_empty = False
 
     def parse(self) -> list[DepositOffer]:
         offers = self._try_api_endpoints()
@@ -100,16 +102,80 @@ class BankierDepositParser(BankDepositParser):
         )
 
     def _parse_html(self, html: str) -> list[DepositOffer]:
+        offers = self._parse_offer_cards(html)
+        if offers:
+            return offers
+
         offers = self._parse_embedded_json(html)
         if offers:
             return offers
 
         text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
-        offers = []
+        return self._parse_ranking_text(text)
+
+    def _parse_offer_cards(self, html: str) -> list[DepositOffer]:
+        """Parse Next.js SSR markup (div.offers__item)."""
+        soup = BeautifulSoup(html, "html.parser")
+        offers: list[DepositOffer] = []
+
+        for item in soup.select("div.offers__item"):
+            name_link = item.select_one(
+                "a.button.link-button.-text, .offers__item-content-name a"
+            )
+            if not name_link:
+                continue
+
+            product_name = re.sub(r"\s+", " ", name_link.get_text(" ", strip=True))
+            if not product_name:
+                continue
+
+            period_el = item.select_one(
+                ".offers__item-content-attribute.-period .offers__item-content-attribute-value"
+            )
+            rate_el = item.select_one(
+                ".offers__item-content-attribute.-divided .offers__item-content-attribute-value"
+            )
+            if not period_el or not rate_el:
+                continue
+
+            term_months = extract_term_from_text(period_el.get_text(" ", strip=True))
+            rate = extract_rate_percent(rate_el.get_text(" ", strip=True))
+            if rate is None or not term_months:
+                continue
+
+            conditions_el = item.select_one(
+                ".offers__item-content-attribute.-conditions .offers__item-content-attribute-value"
+            )
+            has_conditions = (
+                conditions_el is not None
+                and conditions_el.get_text(" ", strip=True).lower() == "tak"
+            )
+
+            institution = self._guess_institution(product_name)
+            offers.append(
+                DepositOffer(
+                    institution_name=institution,
+                    product_name=product_name,
+                    annual_interest_rate=rate,
+                    term_months=term_months,
+                    source_url=BANKIER_LOKATY_URL,
+                    bank_slug=f"bankier-{slugify(institution)[:30]}",
+                    minimum_deposit_amount=1000,
+                    promotional_rate_requirements=(
+                        "Źródło: ranking Bankier.pl"
+                        + ("; dodatkowe warunki" if has_conditions else "")
+                    ),
+                )
+            )
+
+        return self._dedupe(offers)
+
+    def _parse_ranking_text(self, text: str) -> list[DepositOffer]:
+        offers: list[DepositOffer] = []
 
         product_pattern = re.compile(
             r"\n\d+\.\s*\n\s*(?P<name>.+?\(\d+\s*mies\.?\))\s*\n\s*Okres\s*\n\s*"
-            r"(?P<term>\d+)\s*mies\.?\s*\n(?:.*?\n){0,8}?Oprocentowanie\s*\n\s*"
+            r"(?P<term>\d+)\s*mies\.?\s*\n(?:.*?\n){0,12}?Oprocentowanie\s*\n\s*"
             r"(?P<rate>\d+(?:[,.]\d+)?)\s*%",
             re.IGNORECASE | re.DOTALL,
         )
@@ -206,6 +272,8 @@ class BankierDepositParser(BankDepositParser):
             "alior": "Alior Bank",
             "pekao": "Bank Pekao",
             "millennium": "Bank Millennium",
+            "raiffeisen": "Raiffeisen Digital Bank",
+            "unicredit": "UniCredit",
         }
         for key, name in mapping.items():
             if key in lowered:
