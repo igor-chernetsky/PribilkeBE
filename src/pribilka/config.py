@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     admin_webhook_url: str | None = None
     collector_alert_cooldown_hours: int = 12
 
+    # Admin read API (collector status, etc.)
+    admin_api_key: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

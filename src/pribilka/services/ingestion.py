@@ -161,12 +161,15 @@ def ingest_fx(db: Session, records: list[dict]) -> int:
                 bid_price=record["bid_price"],
                 ask_price=record["ask_price"],
                 mid_market_rate=mid,
+                daily_change_percent=record.get("daily_change_percent"),
             )
             db.add(fx)
         else:
             fx.bid_price = record["bid_price"]
             fx.ask_price = record["ask_price"]
             fx.mid_market_rate = mid
+            if record.get("daily_change_percent") is not None:
+                fx.daily_change_percent = record["daily_change_percent"]
 
         detect_rate_change(db, instrument.id, previous, mid, "mid_rate")
         _record_history(db, instrument.id, mid, "mid_rate")
@@ -191,12 +194,15 @@ def ingest_gold(db: Session, records: list[dict]) -> int:
                 spot_price=spot,
                 buy_price=record.get("buy_price"),
                 sell_price=record.get("sell_price"),
+                daily_change_percent=record.get("daily_change_percent"),
             )
             db.add(gold)
         else:
             gold.spot_price = spot
             gold.buy_price = record.get("buy_price")
             gold.sell_price = record.get("sell_price")
+            if record.get("daily_change_percent") is not None:
+                gold.daily_change_percent = record["daily_change_percent"]
 
         detect_rate_change(db, instrument.id, previous, spot, "spot_price")
         _record_history(db, instrument.id, spot, "spot_price")

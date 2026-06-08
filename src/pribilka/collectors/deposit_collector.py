@@ -26,6 +26,10 @@ class PolandDepositCollector(BaseCollector):
         )
         self._last_results: list[ParserResult] = []
 
+    @property
+    def last_results(self) -> list[ParserResult]:
+        return self._last_results
+
     def collect(self) -> list[dict]:
         records: list[dict] = []
         seen_ids: set[str] = set()
