@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from pribilka.api.deps import parse_market_country
 from pribilka.db.session import get_db
 from pribilka.models.enums import CountryCode, CurrencyCode
 from pribilka.models.rate_history import RateHistory
@@ -12,18 +13,22 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[FxResponse])
-def list_fx(country: CountryCode | None = None, db: Session = Depends(get_db)):
+def list_fx(
+    country: CountryCode = Depends(parse_market_country),
+    db: Session = Depends(get_db),
+):
     return market_data.list_fx_rates(db, country)
 
 
 @router.get("/history")
 def get_fx_history(
     base: CurrencyCode,
+    country: CountryCode = Depends(parse_market_country),
     quote: CurrencyCode = CurrencyCode.PLN,
     limit: int = Query(30, ge=1, le=365),
     db: Session = Depends(get_db),
 ):
-    rates = market_data.list_fx_rates(db)
+    rates = market_data.list_fx_rates(db, country)
     match = next(
         (r for r in rates if r.base_currency == base and r.quote_currency == quote),
         None,

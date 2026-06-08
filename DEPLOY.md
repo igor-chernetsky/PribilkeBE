@@ -68,8 +68,8 @@ free -h
 
 ```bash
 cd ~
-git clone https://github.com/YOUR_USER/PribilkaBE.git
-cd PribilkaBE
+git clone git@github.com:igor-chernetsky/PribilkeBE.git
+cd PribilkeBE
 ```
 
 ---
@@ -114,7 +114,7 @@ for key in COLLECTOR_MAP:
 
 ```bash
 curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/api/v1/market-summary
+curl http://127.0.0.1:8000/api/v1/markets/pl/summary
 ```
 
 Ожидаемый ответ `/health`:
@@ -165,7 +165,7 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --d
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
 sudo apt update && sudo apt install -y caddy
 
-cd ~/PribilkaBE
+cd ~/PribilkeBE
 sudo cp Caddyfile.example /etc/caddy/Caddyfile
 sudo systemctl enable caddy
 sudo systemctl reload caddy
@@ -177,7 +177,7 @@ Caddy автоматически получит сертификат Let's Encry
 
 ```bash
 curl https://pribilka.webredirect.org/health
-curl https://pribilka.webredirect.org/api/v1/market-summary
+curl https://pribilka.webredirect.org/api/v1/markets/pl/summary
 ```
 
 Документация API: `https://pribilka.webredirect.org/docs`
@@ -194,13 +194,16 @@ sudo journalctl -u caddy -f
 
 ## Шаг 11. Base URL для приложения
 
+Польское приложение:
+
 ```
-https://pribilka.webredirect.org/api/v1
+https://pribilka.webredirect.org/api/v1/markets/pl
 ```
 
 Примеры:
 - Health: `https://pribilka.webredirect.org/health`
-- Депозиты: `https://pribilka.webredirect.org/api/v1/deposits`
+- Депозиты: `https://pribilka.webredirect.org/api/v1/markets/pl/deposits`
+- Сводка: `https://pribilka.webredirect.org/api/v1/markets/pl/summary`
 - Swagger: `https://pribilka.webredirect.org/docs`
 
 ---
@@ -219,12 +222,91 @@ docker compose -f docker-compose.prod.yml ps
 
 ---
 
-## Обновление после изменений в коде
+## Автодеплой через GitHub Actions
+
+После каждого push в `master`: тесты → SSH на EC2 → `git pull` → `docker compose up --build`.
+
+### 1. Deploy key на EC2 (для private repo)
+
+На EC2:
 
 ```bash
-cd ~/PribilkaBE
+ssh-keygen -t ed25519 -C "pribilka-deploy" -f ~/.ssh/github_deploy -N ""
+cat ~/.ssh/github_deploy.pub
+```
+
+GitHub → репозиторий **PribilkeBE** → Settings → Deploy keys → Add deploy key:
+- Title: `ec2-production`
+- Key: содержимое `.pub`
+- Allow write access: **выключено**
+
+На EC2 настроить git на SSH:
+
+```bash
+cd ~/PribilkeBE
+git remote set-url origin git@github.com:igor-chernetsky/PribilkeBE.git
+
+cat >> ~/.ssh/config << 'EOF'
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/github_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+
+ssh -T git@github.com   # должно: Hi igor-chernetsky/PribilkeBE! ...
 git pull
-docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### 2. Security Group — SSH для GitHub Actions
+
+GitHub Actions подключается с **динамических IP**. Варианты:
+
+**Простой (для MVP):** открыть SSH для всех, доступ только по ключу:
+
+| Type | Port | Source    |
+|------|------|-----------|
+| SSH  | 22   | 0.0.0.0/0 |
+
+**Безопаснее:** self-hosted GitHub runner на EC2 (настройка сложнее).
+
+### 3. Secrets в GitHub
+
+Репозиторий → Settings → Secrets and variables → Actions → New repository secret:
+
+| Secret       | Значение                          |
+|--------------|-----------------------------------|
+| `EC2_HOST`   | Elastic IP, напр. `52.x.x.x`      |
+| `EC2_USER`   | `ubuntu`                          |
+| `EC2_SSH_KEY`| полное содержимое `.pem` файла    |
+
+### 4. Первый push с workflow
+
+Локально:
+
+```bash
+git add .
+git commit -m "Add GitHub Actions deploy"
+git push origin master
+```
+
+GitHub → вкладка **Actions** → workflow **Deploy** → статус run.
+
+### 5. Ручной деплой (если нужно)
+
+```bash
+cd ~/PribilkeBE
+bash scripts/deploy.sh
+```
+
+---
+
+## Обновление после изменений в коде (вручную)
+
+```bash
+cd ~/PribilkeBE
+bash scripts/deploy.sh
 ```
 
 ---

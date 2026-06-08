@@ -312,43 +312,45 @@ When matching instruments appear, the system generates alerts.
 
 # 11. Public API
 
+Each country has a dedicated mobile app. Market data is scoped by country in the URL path. The app embeds its market at build time (e.g. Polish app uses `/api/v1/markets/pl/`).
+
 ## Market Data
 
-GET /api/v1/deposits
+GET /api/v1/markets/{country}/deposits
 
-GET /api/v1/bonds
+GET /api/v1/markets/{country}/bonds
 
-GET /api/v1/gold
+GET /api/v1/markets/{country}/gold
 
-GET /api/v1/fx
+GET /api/v1/markets/{country}/fx
 
-GET /api/v1/market-summary
+GET /api/v1/markets/{country}/summary
+
+`{country}` — ISO 3166-1 alpha-2 lowercase: `pl`, `de`, `cz`
 
 ---
 
 ## Instrument Details
 
-GET /api/v1/deposits/{id}
+GET /api/v1/markets/{country}/deposits/{id}
 
-GET /api/v1/bonds/{id}
+GET /api/v1/markets/{country}/gold/history
 
-GET /api/v1/gold/history
-
-GET /api/v1/fx/history
+GET /api/v1/markets/{country}/fx/history
 
 ---
 
 ## Analytics
 
-GET /api/v1/best-deposits
+GET /api/v1/markets/{country}/best-deposits
 
-GET /api/v1/best-bonds
+GET /api/v1/markets/{country}/best-bonds
 
-GET /api/v1/top-yields
+GET /api/v1/markets/{country}/top-yields
 
-GET /api/v1/trends
+GET /api/v1/markets/{country}/opportunities
 
-GET /api/v1/market-opportunities
+GET /api/v1/markets/{country}/trends
 
 ---
 

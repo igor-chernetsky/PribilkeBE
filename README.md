@@ -39,6 +39,12 @@ API: http://localhost:8000/docs
 docker compose up --build
 ```
 
+## CI/CD
+
+Push в `master` → GitHub Actions запускает тесты и деплой на EC2.
+
+Настройка: см. [DEPLOY.md — Автодеплой](DEPLOY.md#автодеплой-через-github-actions).
+
 Сервисы:
 - `api` — FastAPI на порту 8000
 - `worker` — Celery worker + beat (расписание коллекторов)
@@ -47,19 +53,30 @@ docker compose up --build
 
 ## API Endpoints (v1)
 
+Рыночные данные привязаны к стране в path. Польское приложение использует base URL:
+
+```
+https://your-api-host/api/v1/markets/pl
+```
+
 | Метод | Путь | Описание |
 |-------|------|----------|
-| GET | `/api/v1/deposits` | Список депозитов |
-| GET | `/api/v1/deposits/{id}` | Детали депозита |
-| GET | `/api/v1/bonds` | Список облигаций |
-| GET | `/api/v1/gold` | Текущая цена золота |
-| GET | `/api/v1/fx` | Курсы валют |
-| GET | `/api/v1/market-summary` | Сводка рынка |
-| GET | `/api/v1/best-deposits` | Лучшие депозиты |
-| GET | `/api/v1/best-bonds` | Лучшие облигации |
-| GET | `/api/v1/market-opportunities` | Топ возможностей |
+| GET | `/api/v1/markets/{country}/deposits` | Список депозитов |
+| GET | `/api/v1/markets/{country}/deposits/{id}` | Детали депозита |
+| GET | `/api/v1/markets/{country}/bonds` | Список облигаций |
+| GET | `/api/v1/markets/{country}/gold` | Текущая цена золота |
+| GET | `/api/v1/markets/{country}/gold/history` | История золота |
+| GET | `/api/v1/markets/{country}/fx` | Курсы валют |
+| GET | `/api/v1/markets/{country}/fx/history` | История FX |
+| GET | `/api/v1/markets/{country}/summary` | Сводка рынка |
+| GET | `/api/v1/markets/{country}/best-deposits` | Лучшие депозиты |
+| GET | `/api/v1/markets/{country}/best-bonds` | Лучшие облигации |
+| GET | `/api/v1/markets/{country}/top-yields` | Топ доходности |
+| GET | `/api/v1/markets/{country}/opportunities` | Топ возможностей |
 | POST | `/api/v1/alerts` | Создать алерт |
 | GET | `/api/v1/alerts?user_id=` | Список алертов |
+
+`{country}` — ISO код в нижнем регистре: `pl`, `de`, `cz`.
 
 ## Коллекторы
 

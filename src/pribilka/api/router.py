@@ -3,10 +3,14 @@ from fastapi import APIRouter
 from pribilka.api.v1 import alerts, analytics, bonds, deposits, fx, gold, notifications
 
 api_router = APIRouter()
-api_router.include_router(deposits.router, prefix="/deposits", tags=["deposits"])
-api_router.include_router(bonds.router, prefix="/bonds", tags=["bonds"])
-api_router.include_router(gold.router, prefix="/gold", tags=["gold"])
-api_router.include_router(fx.router, prefix="/fx", tags=["fx"])
-api_router.include_router(analytics.router, tags=["analytics"])
+
+market_router = APIRouter(prefix="/markets/{country}")
+market_router.include_router(deposits.router, prefix="/deposits", tags=["deposits"])
+market_router.include_router(bonds.router, prefix="/bonds", tags=["bonds"])
+market_router.include_router(gold.router, prefix="/gold", tags=["gold"])
+market_router.include_router(fx.router, prefix="/fx", tags=["fx"])
+market_router.include_router(analytics.router, tags=["analytics"])
+
+api_router.include_router(market_router, tags=["markets"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

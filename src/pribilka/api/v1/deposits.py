@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from pribilka.api.deps import parse_market_country
 from pribilka.db.session import get_db
 from pribilka.models.enums import CountryCode, CurrencyCode
 from pribilka.schemas.common import DepositResponse, PaginatedResponse
@@ -13,7 +14,7 @@ router = APIRouter()
 
 @router.get("", response_model=PaginatedResponse)
 def list_deposits(
-    country: CountryCode | None = None,
+    country: CountryCode = Depends(parse_market_country),
     currency: CurrencyCode | None = None,
     min_rate: float | None = Query(None, ge=0),
     max_term_months: int | None = Query(None, ge=1),
@@ -34,8 +35,12 @@ def list_deposits(
 
 
 @router.get("/{deposit_id}", response_model=DepositResponse)
-def get_deposit(deposit_id: UUID, db: Session = Depends(get_db)):
-    deposit = market_data.get_deposit(db, deposit_id)
+def get_deposit(
+    deposit_id: UUID,
+    country: CountryCode = Depends(parse_market_country),
+    db: Session = Depends(get_db),
+):
+    deposit = market_data.get_deposit(db, deposit_id, country=country)
     if not deposit:
         raise HTTPException(status_code=404, detail="Deposit not found")
     return deposit

@@ -89,13 +89,19 @@ def list_deposits(
     return items, total
 
 
-def get_deposit(db: Session, deposit_id: UUID) -> DepositResponse | None:
+def get_deposit(
+    db: Session, deposit_id: UUID, country: CountryCode | None = None
+) -> DepositResponse | None:
     deposit = db.scalar(
         select(BankDeposit)
+        .join(FinancialInstrument)
         .where(BankDeposit.id == deposit_id)
         .options(joinedload(BankDeposit.instrument))
     )
     if not deposit:
+        return None
+
+    if country is not None and deposit.instrument.country != country:
         return None
 
     return DepositResponse(

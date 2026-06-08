@@ -19,8 +19,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Pribilka API",
-    description="Capital allocation opportunity scanner — Poland MVP",
-    version="0.1.0",
+    description="Capital allocation opportunity scanner. Market-scoped endpoints: /api/v1/markets/{country}/",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -37,4 +37,4 @@ app.include_router(api_router, prefix=settings.api_prefix)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "country": settings.default_country}
+    return {"status": "ok"}

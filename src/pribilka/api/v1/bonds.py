@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from pribilka.api.deps import parse_market_country
 from pribilka.db.session import get_db
 from pribilka.models.enums import CountryCode
 from pribilka.schemas.common import PaginatedResponse
@@ -11,7 +12,7 @@ router = APIRouter()
 
 @router.get("", response_model=PaginatedResponse)
 def list_bonds(
-    country: CountryCode | None = None,
+    country: CountryCode = Depends(parse_market_country),
     government_only: bool | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
