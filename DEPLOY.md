@@ -329,6 +329,40 @@ docker compose -f docker-compose.prod.yml down
 
 ---
 
+## Алерты админу при сбое парсеров
+
+Когда парсер банка падает или возвращает 0 оферт, worker отправляет уведомление (не чаще 1 раза в 12 ч).
+
+### Telegram (рекомендуется)
+
+1. Напишите [@BotFather](https://t.me/BotFather) → `/newbot` → получите токен
+2. Напишите боту любое сообщение
+3. Откройте `https://api.telegram.org/bot<TOKEN>/getUpdates` → найдите `"chat":{"id":123456789}`
+4. Добавьте в `.env` на EC2:
+
+```bash
+ADMIN_TELEGRAM_BOT_TOKEN=123456:ABC...
+ADMIN_TELEGRAM_CHAT_ID=123456789
+COLLECTOR_ALERT_COOLDOWN_HOURS=12
+```
+
+5. Перезапустите worker:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d worker
+```
+
+Пример сообщения:
+
+```
+⚠️ Pribilka — problem z kolektorem depozytów
+• ING Bank Śląski (IngDepositParser): 0 ofert (możliwa zmiana layoutu strony)
+```
+
+Альтернатива: `ADMIN_WEBHOOK_URL` — POST JSON `{"text": "...", "source": "pribilka-collector"}`.
+
+---
+
 ## Если не хватает RAM
 
 При OOM или медленной работе — вынести БД и Redis наружу:

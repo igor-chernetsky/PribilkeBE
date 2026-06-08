@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     debug: bool = False
     api_prefix: str = "/api/v1"
 
+    # Admin alerts when collectors fail (Telegram recommended)
+    admin_telegram_bot_token: str | None = None
+    admin_telegram_chat_id: str | None = None
+    admin_webhook_url: str | None = None
+    collector_alert_cooldown_hours: int = 12
+
 
 @lru_cache
 def get_settings() -> Settings:

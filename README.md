@@ -82,12 +82,12 @@ https://your-api-host/api/v1/markets/pl
 
 | Коллектор | Источник | Интервал |
 |-----------|----------|----------|
-| `PolandDepositCollector` | Seed (→ скрейпинг банков) | 4 часа |
+| `PolandDepositCollector` | PKO, ING, mBank, Santander, VeloBank + Bankier.pl | 4 часа |
 | `PolandBondCollector` | Seed (→ MF/GPW) | 1 час |
 | `NbpFxCollector` | NBP API (живые данные) | 15 мин |
 | `PolandGoldCollector` | Placeholder | 15 мин |
 
-Добавление нового источника: создать класс в `src/pribilka/collectors/`, зарегистрировать в `workers/tasks.py`.
+Добавление банка: создать парсер в `src/pribilka/collectors/pl/deposits/`, зарегистрировать в `PL_DEPOSIT_PARSERS`.
 
 ## Структура проекта
 
