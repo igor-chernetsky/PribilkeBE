@@ -3,7 +3,13 @@ import re
 from bs4 import BeautifulSoup
 
 from pribilka.collectors.pl.deposits.base import BankDepositParser
-from pribilka.collectors.pl.deposits.http import fetch_bytes, fetch_text, is_bot_wall
+from pribilka.collectors.pl.deposits.http import (
+    GOOGLEBOT_HEADERS,
+    extract_pdf_text,
+    fetch_bytes,
+    fetch_text,
+    is_bot_wall,
+)
 from pribilka.collectors.pl.deposits.models import DepositOffer
 from pribilka.collectors.pl.deposits.utils import extract_rate_percent, extract_term_from_text
 from pribilka.models.enums import InterestCapitalization
@@ -33,7 +39,9 @@ class IngDepositParser(BankDepositParser):
     source_name = "ing_scraper"
 
     def parse(self) -> list[DepositOffer]:
-        offers = self._parse_rates_pdf(fetch_bytes(ING_RATES_PDF_URL))
+        offers = self._parse_rates_pdf(
+            fetch_bytes(ING_RATES_PDF_URL, headers=GOOGLEBOT_HEADERS)
+        )
         if not offers:
             offers = self._parse_rates_table(fetch_text(ING_RATES_TABLE_URL))
         if not offers:
@@ -45,29 +53,77 @@ class IngDepositParser(BankDepositParser):
         return offers
 
     def _parse_rates_pdf(self, content: bytes) -> list[DepositOffer]:
-        text = ""
-        for encoding in ("cp1250", "latin-1", "utf-8"):
-            decoded = content.decode(encoding, errors="ignore")
-            if "Lokata terminowa" in decoded or "miesi" in decoded:
-                text = decoded
-                break
+        if is_bot_wall(content.decode("utf-8", errors="ignore")):
+            return []
+
+        text = extract_pdf_text(content)
+        if not text:
+            for encoding in ("utf-8", "cp1250", "latin-1"):
+                decoded = content.decode(encoding, errors="ignore")
+                if "Lokata terminowa" in decoded or "miesi" in decoded:
+                    text = decoded
+                    break
         if not text:
             return []
 
-        parts = re.split(r"PLUS.*?Lokata terminowa", text, maxsplit=1, flags=re.IGNORECASE)
+        offers = self._parse_pdf_sections(text)
+        if offers:
+            return self._dedupe(offers)
+
+        # Legacy plain-text PDF export (older fixture / encoding).
+        parts = re.split(
+            r"PLUS.*?Lokata terminowa", text, maxsplit=1, flags=re.IGNORECASE
+        )
         standard_block = parts[0]
         plus_block = parts[1] if len(parts) > 1 else ""
-
-        offers: list[DepositOffer] = []
-        offers.extend(self._parse_term_rate_zip_block(standard_block, _STANDARD_PRODUCTS))
-        offers.extend(
+        legacy_offers: list[DepositOffer] = []
+        legacy_offers.extend(self._parse_term_rate_zip_block(standard_block, _STANDARD_PRODUCTS))
+        legacy_offers.extend(
             self._parse_term_rate_zip_block(
                 plus_block,
                 _PLUS_PRODUCTS,
                 maximum_by_term={6: 50_000, 12: 100_000},
             )
         )
-        return self._dedupe(offers)
+        return self._dedupe(legacy_offers)
+
+    def _parse_pdf_sections(self, text: str) -> list[DepositOffer]:
+        standard_block = self._extract_pdf_section(
+            text,
+            start=r"Lokata terminowa \(o stałej stopie %\).*?PLN",
+            end=r"Lokata terminowa\s+PLUS",
+        )
+        plus_block = self._extract_pdf_section(
+            text,
+            start=r"Lokata terminowa\s+PLUS \(o stałej stopie %\).*?PLN",
+            end=r"Lokata z dopłatami|Lokata terminowa w EUR|$",
+        )
+
+        offers: list[DepositOffer] = []
+        if standard_block:
+            offers.extend(self._parse_term_rate_zip_block(standard_block, _STANDARD_PRODUCTS))
+        if plus_block:
+            offers.extend(
+                self._parse_term_rate_zip_block(
+                    plus_block,
+                    _PLUS_PRODUCTS,
+                    maximum_by_term={6: 50_000, 12: 100_000},
+                )
+            )
+        return offers
+
+    def _extract_pdf_section(
+        self, text: str, start: str, end: str | None = None
+    ) -> str:
+        start_match = re.search(start, text, re.IGNORECASE | re.DOTALL)
+        if not start_match:
+            return ""
+        section = text[start_match.start() :]
+        if end:
+            end_match = re.search(end, section, re.IGNORECASE | re.DOTALL)
+            if end_match:
+                section = section[: end_match.start()]
+        return section
 
     def _parse_term_rate_zip_block(
         self,

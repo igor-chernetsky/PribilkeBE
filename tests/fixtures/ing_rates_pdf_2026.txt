@@ -1,0 +1,12 @@
+Lokata terminowa (o stałej stopie %) dla posiadaczy rachunków oszczędnościowych w PLN
+  3 miesiące                                                                                                                dla kwot od 1.000,00 zł
+  6 miesięcy                                                                                                                dla kwot od 1.000,00 zł
+12 miesięcy                                                                                                               dla kwot od 1.000,00 zł
+1,00%
+1,50%
+2,00%
+Lokata terminowa PLUS (o stałej stopie %) dla posiadaczy rachunków oszczędnościowych w PLN
+6 miesięcy                                                                                                                    dla kwot od 1.000,00 zł do 50.000,00 zł
+12 miesięcy                                                                                                                 dla kwot od 1.000,00 zł do 100.000,00 zł
+3,25%
+3,25%

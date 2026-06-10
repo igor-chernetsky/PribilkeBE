@@ -21,6 +21,7 @@ class UserAlert(Base):
     asset_class: Mapped[AssetClass | None] = mapped_column(Enum(AssetClass))
     minimum_yield: Mapped[float | None] = mapped_column(Numeric(6, 3))
     maximum_term_months: Mapped[int | None] = mapped_column(Integer)
+    minimum_opportunity_score: Mapped[float | None] = mapped_column(Numeric(5, 2))
     risk_level: Mapped[RiskLevel | None] = mapped_column(Enum(RiskLevel))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

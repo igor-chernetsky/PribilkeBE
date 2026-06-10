@@ -6,6 +6,8 @@ from pribilka.collectors.deposit_collector import PolandDepositCollector
 from pribilka.collectors.fx_collector import NbpFxCollector
 from pribilka.collectors.gold_collector import PolandGoldCollector
 from pribilka.db.session import SessionLocal
+from pribilka.models.enums import CountryCode
+from pribilka.services.alert_engine import evaluate_alerts
 from pribilka.services.collector_status import save_collector_run
 from pribilka.services.ingestion import ingest_bonds, ingest_deposits, ingest_fx, ingest_gold
 from pribilka.workers.celery_app import celery_app
@@ -45,6 +47,8 @@ def run_collector(collector_key: str) -> dict:
         db = SessionLocal()
         try:
             ingested = ingest_fn(db, records)
+            if collector_key in ("deposit", "bond"):
+                evaluate_alerts(db, country=CountryCode.PL)
         finally:
             db.close()
 

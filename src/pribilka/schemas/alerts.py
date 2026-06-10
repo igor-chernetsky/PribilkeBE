@@ -15,6 +15,7 @@ class AlertCreate(BaseModel):
     asset_class: AssetClass | None = None
     minimum_yield: float | None = Field(None, ge=0, le=100)
     maximum_term_months: int | None = Field(None, ge=1)
+    minimum_opportunity_score: float | None = Field(None, ge=0, le=100)
     risk_level: RiskLevel | None = None
 
 
@@ -26,6 +27,7 @@ class AlertUpdate(BaseModel):
     asset_class: AssetClass | None = None
     minimum_yield: float | None = Field(None, ge=0, le=100)
     maximum_term_months: int | None = Field(None, ge=1)
+    minimum_opportunity_score: float | None = Field(None, ge=0, le=100)
     risk_level: RiskLevel | None = None
 
 
@@ -39,6 +41,7 @@ class AlertResponse(BaseSchema):
     asset_class: AssetClass | None
     minimum_yield: float | None
     maximum_term_months: int | None
+    minimum_opportunity_score: float | None
     risk_level: RiskLevel | None
     created_at: datetime
     updated_at: datetime

@@ -36,6 +36,18 @@ def test_ing_parser_extracts_rates_pdf():
     assert any(o.product_name == "Lokata terminowa Plus 12M" for o in offers)
 
 
+def test_ing_parser_extracts_rates_pdf_2026_layout():
+    pdf_text = (FIXTURES / "ing_rates_pdf_2026.txt").read_text()
+    offers = IngDepositParser()._parse_rates_pdf(pdf_text.encode("utf-8"))
+
+    assert len(offers) == 5
+    assert any(o.term_months == 3 and o.annual_interest_rate == 1.0 for o in offers)
+    assert any(
+        o.product_name == "Lokata terminowa Plus 6M" and o.annual_interest_rate == 3.25
+        for o in offers
+    )
+
+
 def test_ing_parser_extracts_rates_table():
     html = (FIXTURES / "ing_rates_table.html").read_text()
     offers = IngDepositParser()._parse_rates_table(html)

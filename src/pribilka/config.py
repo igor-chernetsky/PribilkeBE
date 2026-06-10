@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # Admin read API (collector status, etc.)
     admin_api_key: str | None = None
 
+    # Firebase Cloud Messaging (push notifications)
+    firebase_project_id: str | None = None
+    firebase_credentials_json: str | None = None
+
+    # Optional OpenAI enhancement for product insights
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+
 
 @lru_cache
 def get_settings() -> Settings:

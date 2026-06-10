@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pribilka.api.router import api_router
 from pribilka.config import get_settings
 from pribilka.db.base import Base
+from pribilka.db.schema_sync import apply_schema_patches
 from pribilka.db.session import engine
 
 settings = get_settings()
@@ -14,6 +15,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    apply_schema_patches(engine)
     yield
 
 

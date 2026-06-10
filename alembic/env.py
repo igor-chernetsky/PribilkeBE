@@ -12,6 +12,7 @@ from pribilka.models import (  # noqa: F401 — register models
     FxRate,
     GoldPrice,
     MarketEvent,
+    DeviceToken,
     Notification,
     RateHistory,
     UserAlert,
