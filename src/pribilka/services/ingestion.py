@@ -12,6 +12,7 @@ from pribilka.models.fx_rate import FxRate
 from pribilka.models.gold_price import GoldPrice
 from pribilka.models.rate_history import RateHistory
 from pribilka.services.event_engine import detect_rate_change
+from pribilka.services.institution_slugs import resolve_bank_slug
 from pribilka.services.opportunity_scoring import calculate_deposit_score
 
 
@@ -72,10 +73,16 @@ def ingest_deposits(db: Session, records: list[dict]) -> int:
 
         previous_rate = Decimal(str(deposit.annual_interest_rate)) if deposit else None
 
+        slug = resolve_bank_slug(
+            record["institution_name"],
+            record.get("bank_slug"),
+        )
+
         if deposit is None:
             deposit = BankDeposit(
                 instrument_id=instrument.id,
                 institution_name=record["institution_name"],
+                bank_slug=slug,
                 product_name=record["product_name"],
                 annual_interest_rate=new_rate,
                 term_months=record["term_months"],
@@ -90,6 +97,7 @@ def ingest_deposits(db: Session, records: list[dict]) -> int:
             deposit.annual_interest_rate = new_rate
             deposit.term_months = record["term_months"]
             deposit.institution_name = record["institution_name"]
+            deposit.bank_slug = slug
             deposit.product_name = record["product_name"]
 
         detect_rate_change(db, instrument.id, previous_rate, new_rate, "rate")

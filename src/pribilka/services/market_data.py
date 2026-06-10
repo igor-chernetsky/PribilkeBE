@@ -18,6 +18,34 @@ from pribilka.schemas.common import (
     GoldResponse,
     MarketSummaryResponse,
 )
+from pribilka.services.institution_slugs import resolve_bank_slug
+
+
+def _deposit_response(deposit: BankDeposit) -> DepositResponse:
+    return DepositResponse(
+        id=deposit.id,
+        instrument_id=deposit.instrument_id,
+        institution_name=deposit.institution_name,
+        bank_slug=resolve_bank_slug(deposit.institution_name, deposit.bank_slug),
+        product_name=deposit.product_name,
+        annual_interest_rate=float(deposit.annual_interest_rate),
+        term_months=deposit.term_months,
+        interest_capitalization=deposit.interest_capitalization,
+        minimum_deposit_amount=float(deposit.minimum_deposit_amount)
+        if deposit.minimum_deposit_amount
+        else None,
+        maximum_deposit_amount=float(deposit.maximum_deposit_amount)
+        if deposit.maximum_deposit_amount
+        else None,
+        early_withdrawal_conditions=deposit.early_withdrawal_conditions,
+        promotional_rate_requirements=deposit.promotional_rate_requirements,
+        country=deposit.instrument.country,
+        currency=deposit.instrument.currency,
+        opportunity_score=float(deposit.instrument.opportunity_score)
+        if deposit.instrument.opportunity_score
+        else None,
+        last_collected_at=deposit.instrument.last_collected_at,
+    )
 
 
 def _default_country() -> CountryCode:
@@ -60,32 +88,7 @@ def list_deposits(
         .limit(page_size)
     ).all()
 
-    items = [
-        DepositResponse(
-            id=d.id,
-            instrument_id=d.instrument_id,
-            institution_name=d.institution_name,
-            product_name=d.product_name,
-            annual_interest_rate=float(d.annual_interest_rate),
-            term_months=d.term_months,
-            interest_capitalization=d.interest_capitalization,
-            minimum_deposit_amount=float(d.minimum_deposit_amount)
-            if d.minimum_deposit_amount
-            else None,
-            maximum_deposit_amount=float(d.maximum_deposit_amount)
-            if d.maximum_deposit_amount
-            else None,
-            early_withdrawal_conditions=d.early_withdrawal_conditions,
-            promotional_rate_requirements=d.promotional_rate_requirements,
-            country=d.instrument.country,
-            currency=d.instrument.currency,
-            opportunity_score=float(d.instrument.opportunity_score)
-            if d.instrument.opportunity_score
-            else None,
-            last_collected_at=d.instrument.last_collected_at,
-        )
-        for d in deposits
-    ]
+    items = [_deposit_response(d) for d in deposits]
     return items, total
 
 
@@ -104,29 +107,7 @@ def get_deposit(
     if country is not None and deposit.instrument.country != country:
         return None
 
-    return DepositResponse(
-        id=deposit.id,
-        instrument_id=deposit.instrument_id,
-        institution_name=deposit.institution_name,
-        product_name=deposit.product_name,
-        annual_interest_rate=float(deposit.annual_interest_rate),
-        term_months=deposit.term_months,
-        interest_capitalization=deposit.interest_capitalization,
-        minimum_deposit_amount=float(deposit.minimum_deposit_amount)
-        if deposit.minimum_deposit_amount
-        else None,
-        maximum_deposit_amount=float(deposit.maximum_deposit_amount)
-        if deposit.maximum_deposit_amount
-        else None,
-        early_withdrawal_conditions=deposit.early_withdrawal_conditions,
-        promotional_rate_requirements=deposit.promotional_rate_requirements,
-        country=deposit.instrument.country,
-        currency=deposit.instrument.currency,
-        opportunity_score=float(deposit.instrument.opportunity_score)
-        if deposit.instrument.opportunity_score
-        else None,
-        last_collected_at=deposit.instrument.last_collected_at,
-    )
+    return _deposit_response(deposit)
 
 
 def list_bonds(

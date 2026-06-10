@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 # Safe additive migrations for deployments that use create_all without Alembic.
 _SCHEMA_PATCHES = (
     "ALTER TABLE user_alerts ADD COLUMN IF NOT EXISTS minimum_opportunity_score NUMERIC(5, 2)",
+    "ALTER TABLE bank_deposits ADD COLUMN IF NOT EXISTS bank_slug VARCHAR(64)",
 )
 
 

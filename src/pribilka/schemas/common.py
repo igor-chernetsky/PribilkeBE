@@ -44,6 +44,7 @@ class DepositResponse(BaseSchema):
     id: UUID
     instrument_id: UUID
     institution_name: str
+    bank_slug: str | None = None
     product_name: str
     annual_interest_rate: float
     term_months: int

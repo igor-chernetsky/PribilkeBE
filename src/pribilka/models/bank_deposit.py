@@ -17,6 +17,7 @@ class BankDeposit(Base):
         UUID(as_uuid=True), ForeignKey("financial_instruments.id"), unique=True, nullable=False
     )
     institution_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    bank_slug: Mapped[str | None] = mapped_column(String(64), index=True)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     annual_interest_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, index=True)
     term_months: Mapped[int] = mapped_column(Integer, nullable=False)
