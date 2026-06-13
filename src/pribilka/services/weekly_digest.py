@@ -142,7 +142,7 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
                 heading="Złoto i FX",
                 body=(
                     f"Złoto (średni punkt tygodnia): {gold['spot_now'] or 'brak danych'}. "
-                    f"USD/PLN: {stats['summary']['usd_pln'] or 'brak danych'}."
+                    f"USD/PLN: {stats['summary'].get('usd_pln') or 'brak danych'}."
                 ),
             ),
             DigestSection(
@@ -179,7 +179,7 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
             heading="Gold & FX",
             body=(
                 f"Gold (weekly average point): {gold['spot_now'] or 'n/a'}. "
-                f"USD/PLN: {stats['summary']['usd_pln'] or 'n/a'}."
+                f"USD/PLN: {stats['summary'].get('usd_pln') or 'n/a'}."
             ),
         ),
         DigestSection(

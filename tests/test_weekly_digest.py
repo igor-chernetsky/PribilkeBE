@@ -61,6 +61,8 @@ def test_parse_openai_payload_accepts_nested_locales():
             }
         }
     }
-    en, pl = _parse_openai_payload(payload, stats)
+    result = _parse_openai_payload(payload, stats)
+    assert result is not None
+    en, pl = result
     assert en["title"] == "Weekly digest"
     assert pl["title"].startswith("Tygodniowy")
