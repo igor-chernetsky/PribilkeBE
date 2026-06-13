@@ -1,4 +1,4 @@
-from pribilka.services.weekly_digest import _build_template_content
+from pribilka.services.weekly_digest import _build_template_content, _parse_openai_payload
 
 
 def test_template_weekly_digest_has_en_and_pl_sections():
@@ -34,3 +34,33 @@ def test_template_weekly_digest_has_en_and_pl_sections():
     assert len(pl.sections) == 4
     assert "Weekly market digest" in en.title
     assert "Tygodniowy przegląd" in pl.title
+
+
+def test_parse_openai_payload_accepts_nested_locales():
+    stats = {
+        "week_start": "2026-06-01",
+        "week_end": "2026-06-07",
+        "summary": {},
+        "deposits": {"best_now": 7.0, "best_delta_pp": 0, "avg_now": 5.0, "avg_delta_pp": 0},
+        "bonds": {"best_now": 6.0, "best_delta_pp": 0, "avg_now": 5.0, "avg_delta_pp": 0},
+        "gold": {"spot_now": 280.0, "change": 0},
+        "top_deposits": [],
+        "top_bonds": [],
+    }
+    payload = {
+        "locales": {
+            "english": {
+                "title": "Weekly digest",
+                "summary": "Summary EN",
+                "sections": [
+                    {"heading": "Deposits", "body": "Body"},
+                    {"heading": "Bonds", "body": "Body"},
+                    {"heading": "Gold", "body": "Body"},
+                    {"heading": "Picks", "body": "Body"},
+                ],
+            }
+        }
+    }
+    en, pl = _parse_openai_payload(payload, stats)
+    assert en["title"] == "Weekly digest"
+    assert pl["title"].startswith("Tygodniowy")

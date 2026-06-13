@@ -211,6 +211,54 @@ def _dict_to_content(data: dict) -> WeeklyDigestContent:
     return WeeklyDigestContent.model_validate(data)
 
 
+_LOCALE_PAYLOAD_KEYS = {
+    "en": ("en", "english", "en-us", "en_us"),
+    "pl": ("pl", "polish", "pl-pl", "pl_pl", "pol"),
+}
+
+
+def _extract_locale_payload(payload: dict, locale: str) -> dict | None:
+    for key in _LOCALE_PAYLOAD_KEYS[locale]:
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+
+    for container_key in ("locales", "languages", "content", "digest", "weekly_digest"):
+        container = payload.get(container_key)
+        if not isinstance(container, dict):
+            continue
+        for key in _LOCALE_PAYLOAD_KEYS[locale]:
+            value = container.get(key)
+            if isinstance(value, dict):
+                return value
+    return None
+
+
+def _parse_openai_payload(
+    payload: dict, stats: dict
+) -> tuple[dict, dict] | None:
+    en_data = _extract_locale_payload(payload, "en")
+    pl_data = _extract_locale_payload(payload, "pl")
+
+    try:
+        content_en = (
+            _content_to_dict(WeeklyDigestContent.model_validate(en_data))
+            if en_data
+            else _content_to_dict(_build_template_content(stats, "en"))
+        )
+        content_pl = (
+            _content_to_dict(WeeklyDigestContent.model_validate(pl_data))
+            if pl_data
+            else _content_to_dict(_build_template_content(stats, "pl"))
+        )
+    except Exception:
+        return None
+
+    if not en_data and not pl_data:
+        return None
+    return content_en, content_pl
+
+
 def _build_openai_content(stats: dict) -> tuple[dict, dict] | None:
     settings = get_settings()
     if not settings.openai_api_key:
@@ -222,9 +270,9 @@ def _build_openai_content(stats: dict) -> tuple[dict, dict] | None:
         prompt = (
             "You are a financial market editor for a Poland-focused savings app. "
             "Using ONLY the JSON stats below, write a weekly digest in English and Polish.\n"
-            "Return strict JSON with this shape:\n"
-            '{"en":{"title":"...","summary":"...","sections":[{"heading":"...","body":"..."}]},'
-            '"pl":{"title":"...","summary":"...","sections":[{"heading":"...","body":"..."}]}}\n'
+            "Return a single JSON object with EXACTLY two top-level keys: \"en\" and \"pl\".\n"
+            "Each value must be an object: "
+            '{"title":"...","summary":"...","sections":[{"heading":"...","body":"..."}]}\n'
             "Use exactly 4 sections in this order: deposits, government bonds, gold & FX, top picks.\n"
             "2-3 sentences per section body. No buy/sell advice. No invented numbers.\n"
             f"STATS:\n{json.dumps(stats, default=str)}"
@@ -234,23 +282,36 @@ def _build_openai_content(stats: dict) -> tuple[dict, dict] | None:
             headers={"Authorization": f"Bearer {settings.openai_api_key}"},
             json={
                 "model": settings.openai_model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Respond with valid JSON only. "
+                            "Top-level keys must include both en and pl."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
                 "response_format": {"type": "json_object"},
-                "max_tokens": 1200,
+                "max_tokens": 1800,
             },
             timeout=45,
         )
         response.raise_for_status()
-        payload = json.loads(response.json()["choices"][0]["message"]["content"])
-        en = WeeklyDigestContent.model_validate(payload["en"])
-        pl = WeeklyDigestContent.model_validate(payload["pl"])
-        return _content_to_dict(en), _content_to_dict(pl)
+        raw = response.json()["choices"][0]["message"]["content"]
+        payload = json.loads(raw)
+        parsed = _parse_openai_payload(payload, stats)
+        if parsed is None:
+            logger.warning("OpenAI weekly digest JSON unusable: %s", raw[:500])
+        return parsed
     except Exception:
         logger.exception("OpenAI weekly digest generation failed")
         return None
 
 
-def generate_weekly_digest(db: Session, country: CountryCode = CountryCode.PL) -> WeeklyDigest | None:
+def generate_weekly_digest(
+    db: Session, country: CountryCode = CountryCode.PL, *, force: bool = False
+) -> WeeklyDigest | None:
     week_start, week_end = _week_bounds()
     existing = db.scalar(
         select(WeeklyDigest).where(
@@ -258,9 +319,12 @@ def generate_weekly_digest(db: Session, country: CountryCode = CountryCode.PL) -
             WeeklyDigest.week_start == week_start,
         )
     )
-    if existing:
+    if existing and not force:
         logger.info("Weekly digest already exists for %s week %s", country, week_start)
         return existing
+    if existing and force:
+        db.delete(existing)
+        db.commit()
 
     stats = collect_weekly_stats(db, country)
     source = "template"
