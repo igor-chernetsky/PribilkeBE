@@ -6,6 +6,7 @@ import httpx
 from pribilka.collectors.pl.deposits.parse_result import ParseStatus, ParserResult
 from pribilka.config import get_settings
 from pribilka.services.redis_client import get_redis
+from pribilka.services.telegram import send_admin_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def _send_with_cooldown(message: str, alert_key: str) -> None:
     except Exception:
         logger.exception("Redis unavailable for alert cooldown")
 
-    sent = _send_telegram(message) or _send_webhook(message)
+    sent = send_admin_telegram(message) or _send_webhook(message)
     if not sent:
         logger.warning("Collector alert not delivered — configure Telegram or webhook:\n%s", message)
         return
@@ -69,28 +70,6 @@ def _send_with_cooldown(message: str, alert_key: str) -> None:
         redis_client.setex(redis_key, cooldown_seconds, "1")
     except Exception:
         logger.exception("Failed to set alert cooldown in Redis")
-
-
-def _send_telegram(message: str) -> bool:
-    settings = get_settings()
-    if not settings.admin_telegram_bot_token or not settings.admin_telegram_chat_id:
-        return False
-
-    url = f"https://api.telegram.org/bot{settings.admin_telegram_bot_token}/sendMessage"
-    payload = {
-        "chat_id": settings.admin_telegram_chat_id,
-        "text": message,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
-    }
-
-    try:
-        response = httpx.post(url, json=payload, timeout=15.0)
-        response.raise_for_status()
-        return True
-    except Exception:
-        logger.exception("Failed to send Telegram alert")
-        return False
 
 
 def _send_webhook(message: str) -> bool:

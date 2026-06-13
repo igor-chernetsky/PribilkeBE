@@ -14,6 +14,7 @@ from pribilka.models.weekly_digest import WeeklyDigest
 from pribilka.schemas.weekly_digest import DigestSection, WeeklyDigestContent
 from pribilka.services import market_data
 from pribilka.services.push_notifications import send_push_to_user
+from pribilka.services.telegram import send_admin_telegram
 from pribilka.services.trends_history import get_market_trends_history
 
 logger = logging.getLogger(__name__)
@@ -348,12 +349,39 @@ def generate_weekly_digest(
     db.commit()
     db.refresh(digest)
     logger.info("Weekly digest created (%s, source=%s)", digest.id, source)
+    send_weekly_digest_to_telegram(digest)
     return digest
 
 
 def pick_digest_content(digest: WeeklyDigest, locale: str) -> WeeklyDigestContent:
     data = digest.content_pl if locale.lower().startswith("pl") else digest.content_en
     return _dict_to_content(data)
+
+
+def format_digest_telegram_message(digest: WeeklyDigest, locale: str = "pl") -> str:
+    content = pick_digest_content(digest, locale)
+    lines = [
+        f"📊 *{content.title}*",
+        "",
+        content.summary,
+        "",
+    ]
+    for section in content.sections:
+        lines.append(f"*{section.heading}*")
+        lines.append(section.body)
+        lines.append("")
+    lines.append(f"_Źródło: {digest.source} | {digest.week_start} – {digest.week_end}_")
+    return "\n".join(lines)
+
+
+def send_weekly_digest_to_telegram(digest: WeeklyDigest, locale: str = "pl") -> bool:
+    message = format_digest_telegram_message(digest, locale)
+    sent = send_admin_telegram(message)
+    if sent:
+        logger.info("Weekly digest sent to Telegram (%s)", digest.id)
+    else:
+        logger.warning("Weekly digest Telegram delivery skipped or failed (%s)", digest.id)
+    return sent
 
 
 def notify_weekly_digest_subscribers(db: Session, digest: WeeklyDigest) -> int:

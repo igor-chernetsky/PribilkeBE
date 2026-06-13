@@ -5,7 +5,7 @@ from pribilka.services.collector_alerts import report_deposit_parse_results
 
 
 @patch("pribilka.services.collector_alerts.get_redis")
-@patch("pribilka.services.collector_alerts._send_telegram")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_alert_sent_on_parser_error(mock_telegram, mock_get_redis):
     mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
     mock_telegram.return_value = True
@@ -27,7 +27,7 @@ def test_alert_sent_on_parser_error(mock_telegram, mock_get_redis):
 
 
 @patch("pribilka.services.collector_alerts.get_redis")
-@patch("pribilka.services.collector_alerts._send_telegram")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_alert_suppressed_by_cooldown(mock_telegram, mock_get_redis):
     mock_get_redis.return_value = MagicMock(get=MagicMock(return_value="1"))
 
@@ -46,7 +46,7 @@ def test_alert_suppressed_by_cooldown(mock_telegram, mock_get_redis):
 
 
 @patch("pribilka.services.collector_alerts.get_redis")
-@patch("pribilka.services.collector_alerts._send_telegram")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_no_alert_for_supplementary_empty_parser(mock_telegram, mock_get_redis):
     mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
 
@@ -72,7 +72,7 @@ def test_no_alert_for_supplementary_empty_parser(mock_telegram, mock_get_redis):
 
 
 @patch("pribilka.services.collector_alerts.get_redis")
-@patch("pribilka.services.collector_alerts._send_telegram")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_no_alert_when_all_ok(mock_telegram, mock_get_redis):
     mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
 
