@@ -19,6 +19,8 @@ _SCHEMA_PATCHES = (
         PRIMARY KEY (alert_id, instrument_id)
     )
     """,
+    "ALTER TABLE alert_notified_instruments ADD COLUMN IF NOT EXISTS last_notified_yield DOUBLE PRECISION",
+    "ALTER TABLE alert_notified_instruments ADD COLUMN IF NOT EXISTS last_notified_rank DOUBLE PRECISION",
     "ALTER TABLE device_tokens ADD COLUMN IF NOT EXISTS locale VARCHAR(8)",
     """
     CREATE TABLE IF NOT EXISTS weekly_digests (

@@ -1,7 +1,8 @@
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -31,7 +32,10 @@ _PRESET_LABELS = {
 }
 
 _DIGEST_SHOW_MAX = 3
-_COOLDOWN_HOURS = 24
+_YIELD_EPSILON = 0.01
+_RANK_EPSILON = 0.5
+
+MatchKind = Literal["new", "updated"]
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,8 @@ class MatchCandidate:
     instrument_id: uuid.UUID
     label: str
     rank_value: float
+    notify_yield: float
+    kind: MatchKind = "new"
 
 
 def _risk_ok(alert_risk: RiskLevel | None, instrument_risk: RiskLevel) -> bool:
@@ -62,36 +68,84 @@ def _alert_display_name(alert_name: str) -> str:
     return alert_name
 
 
-def _was_recently_notified(
-    db: Session, alert_id: uuid.UUID, instrument_id: uuid.UUID, within_hours: int = _COOLDOWN_HOURS
+def _values_changed(
+    last_yield: float,
+    last_rank: float,
+    yield_value: float,
+    rank_value: float,
 ) -> bool:
-    since = datetime.now(UTC) - timedelta(hours=within_hours)
-    row = db.scalar(
-        select(AlertNotifiedInstrument.last_notified_at).where(
-            AlertNotifiedInstrument.alert_id == alert_id,
-            AlertNotifiedInstrument.instrument_id == instrument_id,
-            AlertNotifiedInstrument.last_notified_at >= since,
-        )
+    return (
+        abs(last_yield - yield_value) >= _YIELD_EPSILON
+        or abs(last_rank - rank_value) >= _RANK_EPSILON
     )
-    return row is not None
+
+
+def resolve_notification_kind(
+    row: AlertNotifiedInstrument | None,
+    yield_value: float,
+    rank_value: float,
+) -> MatchKind | Literal["seed"] | None:
+    """Decide whether an instrument should trigger a user-visible notification."""
+    if row is None:
+        return "new"
+    if row.last_notified_yield is None or row.last_notified_rank is None:
+        return "seed"
+    if _values_changed(row.last_notified_yield, row.last_notified_rank, yield_value, rank_value):
+        return "updated"
+    return None
+
+
+def _get_notified_row(
+    db: Session, alert_id: uuid.UUID, instrument_id: uuid.UUID
+) -> AlertNotifiedInstrument | None:
+    return db.get(AlertNotifiedInstrument, (alert_id, instrument_id))
+
+
+def _seed_snapshot(
+    db: Session,
+    alert_id: uuid.UUID,
+    instrument_id: uuid.UUID,
+    yield_value: float,
+    rank_value: float,
+) -> None:
+    now = datetime.now(UTC)
+    row = db.get(AlertNotifiedInstrument, (alert_id, instrument_id))
+    if row is None:
+        db.add(
+            AlertNotifiedInstrument(
+                alert_id=alert_id,
+                instrument_id=instrument_id,
+                last_notified_at=now,
+                last_notified_yield=yield_value,
+                last_notified_rank=rank_value,
+            )
+        )
+        return
+    row.last_notified_at = now
+    row.last_notified_yield = yield_value
+    row.last_notified_rank = rank_value
 
 
 def _mark_instruments_notified(
-    db: Session, alert_id: uuid.UUID, instrument_ids: list[uuid.UUID]
+    db: Session, alert_id: uuid.UUID, matches: list[MatchCandidate]
 ) -> None:
     now = datetime.now(UTC)
-    for instrument_id in instrument_ids:
-        row = db.get(AlertNotifiedInstrument, (alert_id, instrument_id))
+    for match in matches:
+        row = db.get(AlertNotifiedInstrument, (alert_id, match.instrument_id))
         if row is None:
             db.add(
                 AlertNotifiedInstrument(
                     alert_id=alert_id,
-                    instrument_id=instrument_id,
+                    instrument_id=match.instrument_id,
                     last_notified_at=now,
+                    last_notified_yield=match.notify_yield,
+                    last_notified_rank=match.rank_value,
                 )
             )
         else:
             row.last_notified_at = now
+            row.last_notified_yield = match.notify_yield
+            row.last_notified_rank = match.rank_value
 
 
 def build_digest_message(
@@ -103,8 +157,9 @@ def build_digest_message(
 
     if count == 1:
         match = sorted_matches[0]
+        title = "Updated match" if match.kind == "updated" else "New match"
         return (
-            "New opportunity",
+            title,
             f"{match.label} matches «{display}».",
         )
 
@@ -114,8 +169,16 @@ def build_digest_message(
     if remaining > 0:
         body += f" and {remaining} more"
 
+    updated = sum(1 for item in sorted_matches if item.kind == "updated")
+    if updated == count:
+        title = f"{count} updated opportunities"
+    elif updated == 0:
+        title = f"{count} new opportunities"
+    else:
+        title = f"{count} matching opportunities"
+
     return (
-        f"{count} new opportunities",
+        title,
         f"«{display}»: {body}.",
     )
 
@@ -179,6 +242,33 @@ def _rank_value(instrument: FinancialInstrument, yield_value: float) -> float:
     return yield_value
 
 
+def _consider_match(
+    db: Session,
+    alert: UserAlert,
+    instrument_id: uuid.UUID,
+    label: str,
+    yield_value: float,
+    rank_value: float,
+    matches: list[MatchCandidate],
+) -> None:
+    row = _get_notified_row(db, alert.id, instrument_id)
+    kind = resolve_notification_kind(row, yield_value, rank_value)
+    if kind is None:
+        return
+    if kind == "seed":
+        _seed_snapshot(db, alert.id, instrument_id, yield_value, rank_value)
+        return
+    matches.append(
+        MatchCandidate(
+            instrument_id=instrument_id,
+            label=label,
+            rank_value=rank_value,
+            notify_yield=yield_value,
+            kind=kind,
+        )
+    )
+
+
 def _notify_digest(
     db: Session,
     alert: UserAlert,
@@ -202,11 +292,7 @@ def _notify_digest(
     db.add(notification)
     db.flush()
 
-    _mark_instruments_notified(
-        db,
-        alert.id,
-        [match.instrument_id for match in matches],
-    )
+    _mark_instruments_notified(db, alert.id, matches)
 
     has_push = db.scalar(
         select(DeviceToken.id).where(
@@ -271,31 +357,33 @@ def evaluate_alerts(db: Session, country: CountryCode = CountryCode.PL) -> int:
             instrument = deposit.instrument
             if not _deposit_matches(alert, deposit, instrument):
                 continue
-            if _was_recently_notified(db, alert.id, instrument.id):
-                continue
             rate = float(deposit.annual_interest_rate)
-            matches.append(
-                MatchCandidate(
-                    instrument_id=instrument.id,
-                    label=f"{deposit.institution_name} {rate:.2f}%",
-                    rank_value=_rank_value(instrument, rate),
-                )
+            rank = _rank_value(instrument, rate)
+            _consider_match(
+                db,
+                alert,
+                instrument.id,
+                f"{deposit.institution_name} {rate:.2f}%",
+                rate,
+                rank,
+                matches,
             )
 
         for bond in bonds:
             instrument = bond.instrument
             if not _bond_matches(alert, bond, instrument):
                 continue
-            if _was_recently_notified(db, alert.id, instrument.id):
-                continue
             ytm = float(bond.yield_to_maturity) if bond.yield_to_maturity else float(bond.coupon_rate)
             label = bond.bond_series or bond.issuer
-            matches.append(
-                MatchCandidate(
-                    instrument_id=instrument.id,
-                    label=f"{label} {ytm:.2f}%",
-                    rank_value=_rank_value(instrument, ytm),
-                )
+            rank = _rank_value(instrument, ytm)
+            _consider_match(
+                db,
+                alert,
+                instrument.id,
+                f"{label} {ytm:.2f}%",
+                ytm,
+                rank,
+                matches,
             )
 
         if not matches:
