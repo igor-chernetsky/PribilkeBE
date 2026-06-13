@@ -38,3 +38,24 @@ def mark_notifications_read(
 
     db.commit()
     return {"marked_read": len(notifications)}
+
+
+@router.post("/read-all")
+def mark_all_notifications_read(
+    user_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    notifications = db.scalars(
+        select(Notification).where(
+            Notification.user_id == user_id,
+            Notification.is_read.is_(False),
+        )
+    ).all()
+
+    now = datetime.now(UTC)
+    for notification in notifications:
+        notification.is_read = True
+        notification.read_at = now
+
+    db.commit()
+    return {"marked_read": len(notifications)}
