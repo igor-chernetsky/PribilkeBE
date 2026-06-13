@@ -11,6 +11,7 @@ from pribilka.api.v1 import (
     gold,
     insights,
     notifications,
+    trends,
 )
 
 api_router = APIRouter()
@@ -21,6 +22,7 @@ market_router.include_router(bonds.router, prefix="/bonds", tags=["bonds"])
 market_router.include_router(gold.router, prefix="/gold", tags=["gold"])
 market_router.include_router(fx.router, prefix="/fx", tags=["fx"])
 market_router.include_router(analytics.router, tags=["analytics"])
+market_router.include_router(trends.router, prefix="/trends", tags=["trends"])
 market_router.include_router(insights.router, prefix="/insights", tags=["insights"])
 
 api_router.include_router(market_router, tags=["markets"])
