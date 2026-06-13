@@ -16,6 +16,7 @@ def register_device(payload: DeviceRegisterRequest, db: Session = Depends(get_db
         existing.user_id = payload.user_id
         existing.platform = payload.platform
         existing.push_enabled = payload.push_enabled
+        existing.locale = payload.locale
         db.commit()
         return DeviceRegisterResponse(registered=True, token=payload.token)
 
@@ -24,6 +25,7 @@ def register_device(payload: DeviceRegisterRequest, db: Session = Depends(get_db
         token=payload.token,
         platform=payload.platform,
         push_enabled=payload.push_enabled,
+        locale=payload.locale,
     )
     db.add(device)
     db.commit()

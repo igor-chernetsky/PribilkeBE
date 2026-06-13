@@ -16,6 +16,7 @@ class DeviceToken(Base):
     token: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
     platform: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
     push_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    locale: Mapped[str | None] = mapped_column(String(8))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

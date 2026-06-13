@@ -10,6 +10,7 @@ from pribilka.models.enums import CountryCode
 from pribilka.services.alert_engine import evaluate_alerts
 from pribilka.services.collector_status import save_collector_run
 from pribilka.services.ingestion import ingest_bonds, ingest_deposits, ingest_fx, ingest_gold
+from pribilka.services.weekly_digest import generate_weekly_digest, notify_weekly_digest_subscribers
 from pribilka.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -74,3 +75,21 @@ def run_collector(collector_key: str) -> dict:
 
     logger.info("Collector %s ingested %d records", collector_key, ingested)
     return {"collector": collector_key, "ingested": ingested, "status": status}
+
+
+@celery_app.task(name="pribilka.workers.tasks.generate_weekly_digest_task")
+def generate_weekly_digest_task(country_code: str = "PL") -> dict:
+    country = CountryCode(country_code)
+    db = SessionLocal()
+    try:
+        digest = generate_weekly_digest(db, country=country)
+        notified = 0
+        if digest:
+            notified = notify_weekly_digest_subscribers(db, digest)
+        return {
+            "digest_id": str(digest.id) if digest else None,
+            "notified": notified,
+            "source": digest.source if digest else None,
+        }
+    finally:
+        db.close()

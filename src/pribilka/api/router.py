@@ -7,6 +7,7 @@ from pribilka.api.v1 import (
     bonds,
     deposits,
     devices,
+    digest,
     fx,
     gold,
     insights,
@@ -23,6 +24,7 @@ market_router.include_router(gold.router, prefix="/gold", tags=["gold"])
 market_router.include_router(fx.router, prefix="/fx", tags=["fx"])
 market_router.include_router(analytics.router, tags=["analytics"])
 market_router.include_router(trends.router, prefix="/trends", tags=["trends"])
+market_router.include_router(digest.router, prefix="/digest", tags=["digest"])
 market_router.include_router(insights.router, prefix="/insights", tags=["insights"])
 
 api_router.include_router(market_router, tags=["markets"])

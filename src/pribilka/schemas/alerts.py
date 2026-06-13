@@ -52,6 +52,8 @@ class NotificationResponse(BaseSchema):
     user_id: str
     alert_id: UUID | None
     instrument_id: UUID | None
+    group_id: UUID | None = None
+    match_count: int | None = None
     title: str
     message: str
     is_read: bool

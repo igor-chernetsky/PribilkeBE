@@ -9,6 +9,30 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATCHES = (
     "ALTER TABLE user_alerts ADD COLUMN IF NOT EXISTS minimum_opportunity_score NUMERIC(5, 2)",
     "ALTER TABLE bank_deposits ADD COLUMN IF NOT EXISTS bank_slug VARCHAR(64)",
+    "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS group_id UUID",
+    "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS match_count INTEGER",
+    """
+    CREATE TABLE IF NOT EXISTS alert_notified_instruments (
+        alert_id UUID NOT NULL REFERENCES user_alerts(id),
+        instrument_id UUID NOT NULL,
+        last_notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (alert_id, instrument_id)
+    )
+    """,
+    "ALTER TABLE device_tokens ADD COLUMN IF NOT EXISTS locale VARCHAR(8)",
+    """
+    CREATE TABLE IF NOT EXISTS weekly_digests (
+        id UUID PRIMARY KEY,
+        country VARCHAR(16) NOT NULL,
+        week_start DATE NOT NULL,
+        week_end DATE NOT NULL,
+        content_en JSONB NOT NULL,
+        content_pl JSONB NOT NULL,
+        source VARCHAR(32) NOT NULL DEFAULT 'template',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (country, week_start)
+    )
+    """,
 )
 
 

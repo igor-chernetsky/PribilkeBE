@@ -1,9 +1,12 @@
 import logging
+import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from pribilka.models.alert_notified_instrument import AlertNotifiedInstrument
 from pribilka.models.bank_deposit import BankDeposit
 from pribilka.models.bond import Bond
 from pribilka.models.device_token import DeviceToken
@@ -20,6 +23,23 @@ _RISK_ORDER = {RiskLevel.LOW: 0, RiskLevel.MEDIUM: 1, RiskLevel.HIGH: 2}
 _DEPOSIT_ASSET_CLASSES = {AssetClass.BANK_DEPOSIT}
 _BOND_ASSET_CLASSES = {AssetClass.GOVERNMENT_BOND, AssetClass.CORPORATE_BOND}
 
+_PRESET_PREFIX = "__zr_preset:"
+_PRESET_LABELS = {
+    "deposits": "Deposits",
+    "govBonds": "Government bonds",
+    "topOpportunities": "Top opportunities",
+}
+
+_DIGEST_SHOW_MAX = 3
+_COOLDOWN_HOURS = 24
+
+
+@dataclass(frozen=True)
+class MatchCandidate:
+    instrument_id: uuid.UUID
+    label: str
+    rank_value: float
+
 
 def _risk_ok(alert_risk: RiskLevel | None, instrument_risk: RiskLevel) -> bool:
     if alert_risk is None:
@@ -35,18 +55,69 @@ def _score_ok(alert_min: float | None, score: float | None) -> bool:
     return score >= alert_min
 
 
-def _recent_notification_exists(
-    db: Session, alert_id, instrument_id, within_hours: int = 24
+def _alert_display_name(alert_name: str) -> str:
+    if alert_name.startswith(_PRESET_PREFIX):
+        key = alert_name.removeprefix(_PRESET_PREFIX)
+        return _PRESET_LABELS.get(key, key)
+    return alert_name
+
+
+def _was_recently_notified(
+    db: Session, alert_id: uuid.UUID, instrument_id: uuid.UUID, within_hours: int = _COOLDOWN_HOURS
 ) -> bool:
     since = datetime.now(UTC) - timedelta(hours=within_hours)
-    existing = db.scalar(
-        select(Notification.id).where(
-            Notification.alert_id == alert_id,
-            Notification.instrument_id == instrument_id,
-            Notification.created_at >= since,
+    row = db.scalar(
+        select(AlertNotifiedInstrument.last_notified_at).where(
+            AlertNotifiedInstrument.alert_id == alert_id,
+            AlertNotifiedInstrument.instrument_id == instrument_id,
+            AlertNotifiedInstrument.last_notified_at >= since,
         )
     )
-    return existing is not None
+    return row is not None
+
+
+def _mark_instruments_notified(
+    db: Session, alert_id: uuid.UUID, instrument_ids: list[uuid.UUID]
+) -> None:
+    now = datetime.now(UTC)
+    for instrument_id in instrument_ids:
+        row = db.get(AlertNotifiedInstrument, (alert_id, instrument_id))
+        if row is None:
+            db.add(
+                AlertNotifiedInstrument(
+                    alert_id=alert_id,
+                    instrument_id=instrument_id,
+                    last_notified_at=now,
+                )
+            )
+        else:
+            row.last_notified_at = now
+
+
+def build_digest_message(
+    alert_name: str, matches: list[MatchCandidate], max_shown: int = _DIGEST_SHOW_MAX
+) -> tuple[str, str]:
+    display = _alert_display_name(alert_name)
+    sorted_matches = sorted(matches, key=lambda item: item.rank_value, reverse=True)
+    count = len(sorted_matches)
+
+    if count == 1:
+        match = sorted_matches[0]
+        return (
+            "New opportunity",
+            f"{match.label} matches «{display}».",
+        )
+
+    shown = sorted_matches[:max_shown]
+    body = ", ".join(item.label for item in shown)
+    remaining = count - len(shown)
+    if remaining > 0:
+        body += f" and {remaining} more"
+
+    return (
+        f"{count} new opportunities",
+        f"«{display}»: {body}.",
+    )
 
 
 def _deposit_matches(alert: UserAlert, deposit: BankDeposit, instrument: FinancialInstrument) -> bool:
@@ -102,22 +173,40 @@ def _bond_matches(alert: UserAlert, bond: Bond, instrument: FinancialInstrument)
     return _risk_ok(alert.risk_level, instrument.risk_level)
 
 
-def _notify_match(
+def _rank_value(instrument: FinancialInstrument, yield_value: float) -> float:
+    if instrument.opportunity_score is not None:
+        return float(instrument.opportunity_score)
+    return yield_value
+
+
+def _notify_digest(
     db: Session,
     alert: UserAlert,
-    instrument_id,
-    title: str,
-    message: str,
+    matches: list[MatchCandidate],
 ) -> None:
+    if not matches:
+        return
+
+    title, message = build_digest_message(alert.name, matches)
+    group_id = uuid.uuid4()
+
     notification = Notification(
         user_id=alert.user_id,
         alert_id=alert.id,
-        instrument_id=instrument_id,
+        instrument_id=None,
+        group_id=group_id,
+        match_count=len(matches),
         title=title,
         message=message,
     )
     db.add(notification)
     db.flush()
+
+    _mark_instruments_notified(
+        db,
+        alert.id,
+        [match.instrument_id for match in matches],
+    )
 
     has_push = db.scalar(
         select(DeviceToken.id).where(
@@ -133,15 +222,21 @@ def _notify_match(
             message,
             data={
                 "notification_id": str(notification.id),
-                "instrument_id": str(instrument_id),
                 "alert_id": str(alert.id),
+                "group_id": str(group_id),
+                "match_count": str(len(matches)),
             },
         )
 
 
 def evaluate_alerts(db: Session, country: CountryCode = CountryCode.PL) -> int:
-    """Match active user alerts against current market data. Returns notifications created."""
-    alerts = db.scalars(select(UserAlert).where(UserAlert.is_active.is_(True))).all()
+    """Match active user alerts and create one digest notification per alert."""
+    alerts = db.scalars(
+        select(UserAlert).where(
+            UserAlert.is_active.is_(True),
+            UserAlert.name != "__zr_preset:weeklyDigest",
+        )
+    ).all()
     if not alerts:
         return 0
 
@@ -170,31 +265,45 @@ def evaluate_alerts(db: Session, country: CountryCode = CountryCode.PL) -> int:
     ).all()
 
     for alert in alerts:
+        matches: list[MatchCandidate] = []
+
         for deposit in deposits:
-            if not _deposit_matches(alert, deposit, deposit.instrument):
+            instrument = deposit.instrument
+            if not _deposit_matches(alert, deposit, instrument):
                 continue
-            if _recent_notification_exists(db, alert.id, deposit.instrument_id):
+            if _was_recently_notified(db, alert.id, instrument.id):
                 continue
-            title = "Opportunity Found"
-            message = (
-                f"{deposit.product_name} at {deposit.institution_name} "
-                f"matches alert «{alert.name}» ({float(deposit.annual_interest_rate):.2f}%)."
+            rate = float(deposit.annual_interest_rate)
+            matches.append(
+                MatchCandidate(
+                    instrument_id=instrument.id,
+                    label=f"{deposit.institution_name} {rate:.2f}%",
+                    rank_value=_rank_value(instrument, rate),
+                )
             )
-            _notify_match(db, alert, deposit.instrument_id, title, message)
-            created += 1
 
         for bond in bonds:
-            if not _bond_matches(alert, bond, bond.instrument):
+            instrument = bond.instrument
+            if not _bond_matches(alert, bond, instrument):
                 continue
-            if _recent_notification_exists(db, alert.id, bond.instrument_id):
+            if _was_recently_notified(db, alert.id, instrument.id):
                 continue
             ytm = float(bond.yield_to_maturity) if bond.yield_to_maturity else float(bond.coupon_rate)
             label = bond.bond_series or bond.issuer
-            title = "Alert Triggered"
-            message = f"Bond {label} matches alert «{alert.name}» ({ytm:.2f}% yield)."
-            _notify_match(db, alert, bond.instrument_id, title, message)
-            created += 1
+            matches.append(
+                MatchCandidate(
+                    instrument_id=instrument.id,
+                    label=f"{label} {ytm:.2f}%",
+                    rank_value=_rank_value(instrument, ytm),
+                )
+            )
+
+        if not matches:
+            continue
+
+        _notify_digest(db, alert, matches)
+        created += 1
 
     db.commit()
-    logger.info("Alert evaluation created %d notifications", created)
+    logger.info("Alert evaluation created %d digest notifications", created)
     return created

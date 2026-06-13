@@ -1,3 +1,4 @@
+from pribilka.models.alert_notified_instrument import AlertNotifiedInstrument
 from pribilka.models.bank_deposit import BankDeposit
 from pribilka.models.device_token import DeviceToken
 from pribilka.models.bond import Bond
@@ -8,8 +9,10 @@ from pribilka.models.market_event import MarketEvent
 from pribilka.models.notification import Notification
 from pribilka.models.rate_history import RateHistory
 from pribilka.models.user_alert import UserAlert
+from pribilka.models.weekly_digest import WeeklyDigest
 
 __all__ = [
+    "AlertNotifiedInstrument",
     "BankDeposit",
     "DeviceToken",
     "Bond",
@@ -20,4 +23,5 @@ __all__ = [
     "Notification",
     "RateHistory",
     "UserAlert",
+    "WeeklyDigest",
 ]

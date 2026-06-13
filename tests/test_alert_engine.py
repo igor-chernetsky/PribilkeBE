@@ -1,9 +1,15 @@
 from decimal import Decimal
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 from pribilka.models.enums import AssetClass, CountryCode, CurrencyCode, RiskLevel
 from pribilka.models.user_alert import UserAlert
-from pribilka.services.alert_engine import _deposit_matches, _score_ok
+from pribilka.services.alert_engine import (
+    MatchCandidate,
+    _deposit_matches,
+    _score_ok,
+    build_digest_message,
+)
 
 
 def _make_alert(**kwargs) -> UserAlert:
@@ -50,3 +56,28 @@ def test_deposit_rejects_when_term_too_long():
     alert = _make_alert(maximum_term_months=6)
     deposit, instrument = _make_deposit(rate=6.0, term=12)
     assert _deposit_matches(alert, deposit, instrument) is False
+
+
+def test_build_digest_message_single_match():
+    title, message = build_digest_message(
+        "__zr_preset:deposits",
+        [MatchCandidate(instrument_id=uuid4(), label="PKO 7.20%", rank_value=80)],
+    )
+    assert title == "New opportunity"
+    assert "PKO 7.20%" in message
+    assert "Deposits" in message
+
+
+def test_build_digest_message_multiple_matches():
+    title, message = build_digest_message(
+        "My alert",
+        [
+            MatchCandidate(instrument_id=uuid4(), label="PKO 7.20%", rank_value=80),
+            MatchCandidate(instrument_id=uuid4(), label="mBank 6.80%", rank_value=70),
+            MatchCandidate(instrument_id=uuid4(), label="ING 6.50%", rank_value=65),
+            MatchCandidate(instrument_id=uuid4(), label="Alior 6.40%", rank_value=60),
+        ],
+    )
+    assert title == "4 new opportunities"
+    assert "PKO 7.20%" in message
+    assert "and 1 more" in message
