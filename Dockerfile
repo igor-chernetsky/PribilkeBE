@@ -7,12 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
-RUN pip install --no-cache-dir \
-    fastapi uvicorn[standard] sqlalchemy alembic psycopg2-binary \
-    redis celery httpx beautifulsoup4 pydantic-settings python-dateutil \
-    google-auth pypdf
-
 COPY src/ src/
+RUN pip install --no-cache-dir .
 ENV PYTHONPATH=/app/src
 
 EXPOSE 8000
