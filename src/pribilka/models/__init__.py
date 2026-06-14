@@ -8,6 +8,7 @@ from pribilka.models.gold_price import GoldPrice
 from pribilka.models.market_event import MarketEvent
 from pribilka.models.notification import Notification
 from pribilka.models.rate_history import RateHistory
+from pribilka.models.user_access_token import UserAccessToken
 from pribilka.models.user_alert import UserAlert
 from pribilka.models.weekly_digest import WeeklyDigest
 
@@ -22,6 +23,7 @@ __all__ = [
     "MarketEvent",
     "Notification",
     "RateHistory",
+    "UserAccessToken",
     "UserAlert",
     "WeeklyDigest",
 ]

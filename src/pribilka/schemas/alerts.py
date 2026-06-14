@@ -8,7 +8,6 @@ from pribilka.schemas.common import BaseSchema
 
 
 class AlertCreate(BaseModel):
-    user_id: str
     name: str
     country: CountryCode | None = CountryCode.PL
     currency: CurrencyCode | None = CurrencyCode.PLN

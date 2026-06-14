@@ -4,6 +4,7 @@ from pribilka.api.v1 import (
     admin,
     alerts,
     analytics,
+    auth,
     bonds,
     deposits,
     devices,
@@ -28,6 +29,7 @@ market_router.include_router(digest.router, prefix="/digest", tags=["digest"])
 market_router.include_router(insights.router, prefix="/insights", tags=["insights"])
 
 api_router.include_router(market_router, tags=["markets"])
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

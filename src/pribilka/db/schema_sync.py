@@ -19,6 +19,14 @@ _SCHEMA_PATCHES = (
         PRIMARY KEY (alert_id, instrument_id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS user_access_tokens (
+        token_hash VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_user_access_tokens_user_id ON user_access_tokens (user_id)",
     "ALTER TABLE alert_notified_instruments ADD COLUMN IF NOT EXISTS last_notified_yield DOUBLE PRECISION",
     "ALTER TABLE alert_notified_instruments ADD COLUMN IF NOT EXISTS last_notified_rank DOUBLE PRECISION",
     "ALTER TABLE device_tokens ADD COLUMN IF NOT EXISTS locale VARCHAR(8)",
