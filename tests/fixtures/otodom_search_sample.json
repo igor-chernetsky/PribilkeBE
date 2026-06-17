@@ -1,0 +1,39 @@
+{
+  "props": {
+    "pageProps": {
+      "data": {
+        "searchAds": {
+          "items": [
+            {
+              "id": 111,
+              "slug": "mieszkanie-warszawa-2p",
+              "title": "Mieszkanie 2 pokoje",
+              "roomsNumber": "TWO",
+              "areaInSquareMeters": 48,
+              "totalPrice": { "value": 620000, "currency": "PLN" },
+              "dateCreated": "2026-06-01T10:00:00Z"
+            },
+            {
+              "id": 222,
+              "slug": "mieszkanie-warszawa-2p-2",
+              "title": "Kawalerka premium",
+              "roomsNumber": "TWO",
+              "areaInSquareMeters": 52,
+              "totalPrice": { "value": 710000, "currency": "PLN" },
+              "dateCreated": "2026-06-02T11:00:00Z"
+            },
+            {
+              "id": 333,
+              "slug": "mieszkanie-warszawa-2p-3",
+              "title": "Blisko metra",
+              "roomsNumber": "TWO",
+              "areaInSquareMeters": 55,
+              "totalPrice": { "value": 800000, "currency": "PLN" },
+              "dateCreated": "2026-06-03T12:00:00Z"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

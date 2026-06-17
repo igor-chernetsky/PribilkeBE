@@ -43,6 +43,67 @@ _SCHEMA_PATCHES = (
         UNIQUE (country, week_start)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS rental_listings (
+        id UUID PRIMARY KEY,
+        source VARCHAR(32) NOT NULL DEFAULT 'otodom',
+        external_id VARCHAR(64) NOT NULL,
+        listing_type VARCHAR(16) NOT NULL,
+        city_slug VARCHAR(64) NOT NULL,
+        room_count INTEGER NOT NULL,
+        price_pln NUMERIC(12, 2) NOT NULL,
+        area_sqm NUMERIC(8, 2),
+        price_per_sqm NUMERIC(10, 2),
+        title VARCHAR(512),
+        url VARCHAR(1024),
+        published_at TIMESTAMPTZ,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (source, external_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_rental_listings_city_slug ON rental_listings (city_slug)",
+    "CREATE INDEX IF NOT EXISTS ix_rental_listings_last_seen_at ON rental_listings (last_seen_at)",
+    "CREATE INDEX IF NOT EXISTS ix_rental_listings_fresh_lookup ON rental_listings (city_slug, listing_type, room_count, last_seen_at)",
+    """
+    CREATE TABLE IF NOT EXISTS rental_market_snapshots (
+        id UUID PRIMARY KEY,
+        city_slug VARCHAR(64) NOT NULL,
+        listing_type VARCHAR(16) NOT NULL,
+        room_count INTEGER NOT NULL,
+        period_start TIMESTAMPTZ NOT NULL,
+        sample_size INTEGER NOT NULL DEFAULT 0,
+        price_p25 NUMERIC(12, 2),
+        price_median NUMERIC(12, 2),
+        price_p75 NUMERIC(12, 2),
+        price_per_sqm_p25 NUMERIC(10, 2),
+        price_per_sqm_median NUMERIC(10, 2),
+        price_per_sqm_p75 NUMERIC(10, 2),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (city_slug, listing_type, room_count, period_start)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_rental_market_snapshots_city_slug ON rental_market_snapshots (city_slug)",
+    "CREATE INDEX IF NOT EXISTS ix_rental_market_snapshots_period_start ON rental_market_snapshots (period_start)",
+    """
+    CREATE TABLE IF NOT EXISTS rental_yield_snapshots (
+        id UUID PRIMARY KEY,
+        city_slug VARCHAR(64) NOT NULL,
+        room_count INTEGER NOT NULL,
+        period_start TIMESTAMPTZ NOT NULL,
+        sale_sample_size INTEGER NOT NULL DEFAULT 0,
+        rent_sample_size INTEGER NOT NULL DEFAULT 0,
+        sale_price_median NUMERIC(12, 2),
+        rent_price_median NUMERIC(12, 2),
+        gross_yield_p25 NUMERIC(6, 3),
+        gross_yield_median NUMERIC(6, 3),
+        gross_yield_p75 NUMERIC(6, 3),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (city_slug, room_count, period_start)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_rental_yield_snapshots_city_slug ON rental_yield_snapshots (city_slug)",
+    "CREATE INDEX IF NOT EXISTS ix_rental_yield_snapshots_period_start ON rental_yield_snapshots (period_start)",
 )
 
 

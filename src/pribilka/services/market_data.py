@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from pribilka.config import get_settings
 from pribilka.models.bank_deposit import BankDeposit
 from pribilka.models.bond import Bond
-from pribilka.models.enums import AssetClass, CountryCode, CurrencyCode
+from pribilka.models.enums import AssetClass, CountryCode, CurrencyCode, RiskLevel
 from pribilka.models.financial_instrument import FinancialInstrument
 from pribilka.models.fx_rate import FxRate
 from pribilka.models.gold_price import GoldPrice
@@ -19,6 +19,29 @@ from pribilka.schemas.common import (
     MarketSummaryResponse,
 )
 from pribilka.services.institution_slugs import resolve_bank_slug
+from pribilka.services.risk_levels import resolve_risk_level
+
+
+def _score_value(instrument: FinancialInstrument) -> float | None:
+    if instrument.opportunity_score is None:
+        return None
+    return float(instrument.opportunity_score)
+
+
+def _deposit_risk_level(deposit: BankDeposit) -> RiskLevel:
+    return resolve_risk_level(
+        deposit.instrument.asset_class,
+        _score_value(deposit.instrument),
+        term_months=deposit.term_months,
+    )
+
+
+def _bond_risk_level(bond: Bond) -> RiskLevel:
+    return resolve_risk_level(
+        bond.instrument.asset_class,
+        _score_value(bond.instrument),
+        is_government=bond.is_government,
+    )
 
 
 def _deposit_response(deposit: BankDeposit) -> DepositResponse:
@@ -44,6 +67,7 @@ def _deposit_response(deposit: BankDeposit) -> DepositResponse:
         opportunity_score=float(deposit.instrument.opportunity_score)
         if deposit.instrument.opportunity_score
         else None,
+        risk_level=_deposit_risk_level(deposit),
         last_collected_at=deposit.instrument.last_collected_at,
     )
 
@@ -158,6 +182,7 @@ def list_bonds(
             opportunity_score=float(b.instrument.opportunity_score)
             if b.instrument.opportunity_score
             else None,
+            risk_level=_bond_risk_level(b),
             last_collected_at=b.instrument.last_collected_at,
         )
         for b in bonds
@@ -201,6 +226,7 @@ def get_latest_gold(db: Session, country: CountryCode | None = None) -> GoldResp
         if gold.annual_change_percent
         else None,
         currency=gold.instrument.currency,
+        risk_level=resolve_risk_level(AssetClass.GOLD),
         last_collected_at=gold.instrument.last_collected_at,
     )
 
@@ -235,6 +261,7 @@ def list_fx_rates(db: Session, country: CountryCode | None = None) -> list[FxRes
             if r.monthly_change_percent
             else None,
             source_name=r.instrument.source_name,
+            risk_level=resolve_risk_level(AssetClass.FOREIGN_EXCHANGE),
             last_collected_at=r.instrument.last_collected_at,
         )
         for r in rates

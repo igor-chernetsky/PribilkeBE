@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from pribilka.models.enums import AssetClass, CountryCode, CurrencyCode, InterestCapitalization
+from pribilka.models.enums import AssetClass, CountryCode, CurrencyCode, InterestCapitalization, RiskLevel
 from pribilka.schemas.common import DepositResponse
 from pribilka.services.ai_insights import _build_deposit_insight
 
@@ -21,6 +21,7 @@ def test_build_deposit_insight_above_market_average():
         country=CountryCode.PL,
         currency=CurrencyCode.PLN,
         opportunity_score=86.5,
+        risk_level=RiskLevel.LOW,
         last_collected_at=None,
     )
 

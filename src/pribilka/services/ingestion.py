@@ -13,7 +13,8 @@ from pribilka.models.gold_price import GoldPrice
 from pribilka.models.rate_history import RateHistory
 from pribilka.services.event_engine import detect_rate_change
 from pribilka.services.institution_slugs import resolve_bank_slug
-from pribilka.services.opportunity_scoring import calculate_deposit_score
+from pribilka.services.opportunity_scoring import calculate_bond_score, calculate_deposit_score
+from pribilka.services.risk_levels import resolve_risk_level
 
 
 def _get_or_create_instrument(
@@ -106,6 +107,11 @@ def ingest_deposits(db: Session, records: list[dict]) -> int:
         instrument.opportunity_score = calculate_deposit_score(
             new_rate, record["term_months"], max_rate
         )
+        instrument.risk_level = resolve_risk_level(
+            AssetClass.BANK_DEPOSIT,
+            instrument.opportunity_score,
+            term_months=record["term_months"],
+        )
         count += 1
 
     db.commit()
@@ -113,6 +119,17 @@ def ingest_deposits(db: Session, records: list[dict]) -> int:
 
 
 def ingest_bonds(db: Session, records: list[dict]) -> int:
+    if not records:
+        return 0
+
+    max_ytm = max(
+        (
+            Decimal(str(r["yield_to_maturity"]))
+            if r.get("yield_to_maturity")
+            else Decimal(str(r["coupon_rate"]))
+        )
+        for r in records
+    )
     count = 0
     for record in records:
         asset_class = (
@@ -146,6 +163,17 @@ def ingest_bonds(db: Session, records: list[dict]) -> int:
             detect_rate_change(db, instrument.id, previous_ytm, ytm, "yield")
             _record_history(db, instrument.id, ytm, "yield")
 
+        instrument.opportunity_score = calculate_bond_score(
+            ytm,
+            Decimal(str(record["coupon_rate"])),
+            liquidity_score=80.0 if record.get("is_government") else 45.0,
+            max_ytm_in_market=max_ytm,
+        )
+        instrument.risk_level = resolve_risk_level(
+            asset_class,
+            instrument.opportunity_score,
+            is_government=record.get("is_government", False),
+        )
         count += 1
 
     db.commit()
@@ -181,6 +209,7 @@ def ingest_fx(db: Session, records: list[dict]) -> int:
 
         detect_rate_change(db, instrument.id, previous, mid, "mid_rate")
         _record_history(db, instrument.id, mid, "mid_rate")
+        instrument.risk_level = resolve_risk_level(AssetClass.FOREIGN_EXCHANGE)
         count += 1
 
     db.commit()
@@ -214,6 +243,7 @@ def ingest_gold(db: Session, records: list[dict]) -> int:
 
         detect_rate_change(db, instrument.id, previous, spot, "spot_price")
         _record_history(db, instrument.id, spot, "spot_price")
+        instrument.risk_level = resolve_risk_level(AssetClass.GOLD)
         count += 1
 
     db.commit()

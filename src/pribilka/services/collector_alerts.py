@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import httpx
 
 from pribilka.collectors.pl.deposits.parse_result import ParseStatus, ParserResult
+from pribilka.collectors.pl.rental.issues import RentalCollectorIssue, RentalCollectorIssueKind
 from pribilka.config import get_settings
 from pribilka.services.redis_client import get_redis
 from pribilka.services.telegram import send_admin_telegram
@@ -45,6 +46,32 @@ def report_deposit_parse_results(results: list[ParserResult], total_records: int
 
     lines.append(f"\n_{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}_")
     _send_with_cooldown("\n".join(lines), alert_key="deposit_collector_summary")
+
+
+def report_rental_collector_issues(issues: list[RentalCollectorIssue], total_records: int) -> None:
+    """Notify admin when Otodom rental collector cannot fetch or parse listings."""
+    if not issues:
+        return
+
+    lines = ["⚠️ *Pribilka — problem z kolektorem Otodom (nieruchomości)*"]
+    for issue in issues[:12]:
+        if issue.kind == RentalCollectorIssueKind.FETCH_ERROR:
+            detail = f"błąd HTTP/połączenia\n  `{issue.error_message or 'unknown'}`"
+        elif issue.kind == RentalCollectorIssueKind.BOT_WALL:
+            detail = "Otodom zwrócił stronę anty-bot (brak danych)"
+        else:
+            detail = "pusta odpowiedź / brak ogłoszeń do parsowania"
+
+        lines.append(
+            f"• *{issue.city_slug}* {issue.listing_type} {issue.room_count}p, str. {issue.page}: {detail}"
+        )
+
+    if len(issues) > 12:
+        lines.append(f"\n…i jeszcze *{len(issues) - 12}* problemów.")
+
+    lines.append(f"\nZebrano ogłoszeń w tym przebiegu: *{total_records}*")
+    lines.append(f"\n_{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}_")
+    _send_with_cooldown("\n".join(lines), alert_key="rental_collector_summary")
 
 
 def _send_with_cooldown(message: str, alert_key: str) -> None:

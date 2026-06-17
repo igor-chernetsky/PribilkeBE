@@ -11,6 +11,9 @@ from pribilka.models.rate_history import RateHistory
 from pribilka.models.user_access_token import UserAccessToken
 from pribilka.models.user_alert import UserAlert
 from pribilka.models.weekly_digest import WeeklyDigest
+from pribilka.models.rental_listing import RentalListing
+from pribilka.models.rental_market_snapshot import RentalMarketSnapshot
+from pribilka.models.rental_yield_snapshot import RentalYieldSnapshot
 
 __all__ = [
     "AlertNotifiedInstrument",
@@ -26,4 +29,7 @@ __all__ = [
     "UserAccessToken",
     "UserAlert",
     "WeeklyDigest",
+    "RentalListing",
+    "RentalMarketSnapshot",
+    "RentalYieldSnapshot",
 ]

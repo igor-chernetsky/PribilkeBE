@@ -16,6 +16,7 @@ from pribilka.models.financial_instrument import FinancialInstrument
 from pribilka.models.notification import Notification
 from pribilka.models.user_alert import UserAlert
 from pribilka.services.push_notifications import send_push_to_user
+from pribilka.services.risk_levels import resolve_risk_level
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +200,14 @@ def _deposit_matches(alert: UserAlert, deposit: BankDeposit, instrument: Financi
         float(instrument.opportunity_score) if instrument.opportunity_score else None,
     ):
         return False
-    return _risk_ok(alert.risk_level, instrument.risk_level)
+    return _risk_ok(
+        alert.risk_level,
+        resolve_risk_level(
+            instrument.asset_class,
+            float(instrument.opportunity_score) if instrument.opportunity_score else None,
+            term_months=deposit.term_months,
+        ),
+    )
 
 
 def _bond_matches(alert: UserAlert, bond: Bond, instrument: FinancialInstrument) -> bool:
@@ -233,7 +241,14 @@ def _bond_matches(alert: UserAlert, bond: Bond, instrument: FinancialInstrument)
         float(instrument.opportunity_score) if instrument.opportunity_score else None,
     ):
         return False
-    return _risk_ok(alert.risk_level, instrument.risk_level)
+    return _risk_ok(
+        alert.risk_level,
+        resolve_risk_level(
+            instrument.asset_class,
+            float(instrument.opportunity_score) if instrument.opportunity_score else None,
+            is_government=bond.is_government,
+        ),
+    )
 
 
 def _rank_value(instrument: FinancialInstrument, yield_value: float) -> float:

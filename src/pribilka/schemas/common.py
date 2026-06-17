@@ -56,6 +56,7 @@ class DepositResponse(BaseSchema):
     country: CountryCode
     currency: CurrencyCode
     opportunity_score: float | None
+    risk_level: RiskLevel
     last_collected_at: datetime | None
 
 
@@ -73,6 +74,7 @@ class BondResponse(BaseSchema):
     country: CountryCode
     currency: CurrencyCode
     opportunity_score: float | None
+    risk_level: RiskLevel
     last_collected_at: datetime | None
 
 
@@ -87,6 +89,7 @@ class GoldResponse(BaseSchema):
     monthly_change_percent: float | None
     annual_change_percent: float | None
     currency: CurrencyCode
+    risk_level: RiskLevel
     last_collected_at: datetime | None
 
 
@@ -102,6 +105,7 @@ class FxResponse(BaseSchema):
     weekly_change_percent: float | None
     monthly_change_percent: float | None
     source_name: str
+    risk_level: RiskLevel
     last_collected_at: datetime | None
 
 

@@ -48,3 +48,8 @@ class InterestCapitalization(str, enum.Enum):
     QUARTERLY = "quarterly"
     ANNUALLY = "annually"
     DAILY = "daily"
+
+
+class RentalListingType(str, enum.Enum):
+    SALE = "sale"
+    RENT = "rent"

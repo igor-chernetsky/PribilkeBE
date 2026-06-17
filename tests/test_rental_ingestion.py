@@ -1,0 +1,118 @@
+from datetime import UTC, datetime
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from pribilka.db.base import Base
+from pribilka.models.enums import RentalListingType
+from pribilka.models.rental_listing import RentalListing
+from pribilka.models.rental_market_snapshot import RentalMarketSnapshot
+from pribilka.models.rental_yield_snapshot import RentalYieldSnapshot
+from pribilka.services.rental_ingestion import ingest_rental_listings
+from pribilka.services.rental_stats import truncate_to_12h_period
+
+_RENTAL_TABLES = (
+    RentalListing.__table__,
+    RentalMarketSnapshot.__table__,
+    RentalYieldSnapshot.__table__,
+)
+
+
+def _make_session():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine, tables=list(_RENTAL_TABLES))
+    return sessionmaker(bind=engine)()
+
+
+def test_ingest_rental_listings_writes_snapshots():
+    db = _make_session()
+    now = datetime(2026, 6, 7, 13, 0, tzinfo=UTC)
+    records = [
+        {
+            "source": "otodom",
+            "external_id": "sale-1",
+            "listing_type": RentalListingType.SALE,
+            "city_slug": "warszawa",
+            "room_count": 2,
+            "price_pln": 600_000,
+            "area_sqm": 50,
+            "price_per_sqm": 12_000,
+            "title": "Sale 1",
+            "url": "https://example.com/sale-1",
+            "published_at": now,
+        },
+        {
+            "source": "otodom",
+            "external_id": "sale-2",
+            "listing_type": RentalListingType.SALE,
+            "city_slug": "warszawa",
+            "room_count": 2,
+            "price_pln": 700_000,
+            "area_sqm": 55,
+            "price_per_sqm": 12_727,
+            "title": "Sale 2",
+            "url": "https://example.com/sale-2",
+            "published_at": now,
+        },
+        {
+            "source": "otodom",
+            "external_id": "rent-1",
+            "listing_type": RentalListingType.RENT,
+            "city_slug": "warszawa",
+            "room_count": 2,
+            "price_pln": 2_500,
+            "area_sqm": 48,
+            "price_per_sqm": 52,
+            "title": "Rent 1",
+            "url": "https://example.com/rent-1",
+            "published_at": now,
+        },
+        {
+            "source": "otodom",
+            "external_id": "rent-2",
+            "listing_type": RentalListingType.RENT,
+            "city_slug": "warszawa",
+            "room_count": 2,
+            "price_pln": 3_000,
+            "area_sqm": 52,
+            "price_per_sqm": 57,
+            "title": "Rent 2",
+            "url": "https://example.com/rent-2",
+            "published_at": now,
+        },
+    ]
+
+    ingested = ingest_rental_listings(db, records)
+    assert ingested == 4
+
+    period_start = truncate_to_12h_period(datetime.now(UTC))
+    sale_snapshot = db.scalar(
+        select(RentalMarketSnapshot).where(
+            RentalMarketSnapshot.city_slug == "warszawa",
+            RentalMarketSnapshot.listing_type == RentalListingType.SALE,
+            RentalMarketSnapshot.room_count == 2,
+            RentalMarketSnapshot.period_start == period_start,
+        )
+    )
+    assert sale_snapshot is not None
+    assert sale_snapshot.sample_size == 2
+    assert float(sale_snapshot.price_median) == 650_000
+
+    yield_snapshot = db.scalar(
+        select(RentalYieldSnapshot).where(
+            RentalYieldSnapshot.city_slug == "warszawa",
+            RentalYieldSnapshot.room_count == 2,
+            RentalYieldSnapshot.period_start == period_start,
+        )
+    )
+    assert yield_snapshot is not None
+    assert yield_snapshot.sale_sample_size == 2
+    assert yield_snapshot.rent_sample_size == 2
+    assert yield_snapshot.gross_yield_median is not None
+
+    db.close()
