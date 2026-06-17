@@ -26,7 +26,7 @@ DATE_CREATED_PATTERN = re.compile(r'"dateCreated"\s*:\s*"([^"]+)"')
 
 def build_otodom_search_url(
     *,
-    city_slug: str,
+    location_path: str,
     listing_type: RentalListingType,
     room_count: int,
     page: int = 1,
@@ -36,7 +36,7 @@ def build_otodom_search_url(
     room_token = OTODOM_ROOM_PARAM[room_count]
     rooms_query = quote(f"[{room_token}]")
     return (
-        f"{OTODOM_BASE}/pl/wyniki/{transaction}/mieszkanie/{city_slug}"
+        f"{OTODOM_BASE}/pl/wyniki/{transaction}/mieszkanie/{location_path}"
         f"?roomsNumber={rooms_query}&limit={limit}&page={page}"
     )
 

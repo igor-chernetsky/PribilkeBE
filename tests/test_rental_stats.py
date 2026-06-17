@@ -37,6 +37,19 @@ def test_truncate_to_12h_period():
     assert truncate_to_12h_period(evening).hour == 12
 
 
+def test_build_otodom_search_url_includes_voivodeship():
+    from pribilka.collectors.pl.rental.otodom import build_otodom_search_url
+
+    url = build_otodom_search_url(
+        location_path="mazowieckie/warszawa",
+        listing_type=RentalListingType.SALE,
+        room_count=2,
+        page=1,
+    )
+    assert "/mieszkanie/mazowieckie/warszawa?" in url
+    assert "roomsNumber=%5BTWO%5D" in url
+
+
 def test_parse_otodom_fixture():
     from pribilka.collectors.pl.rental.otodom import parse_otodom_search_html
 

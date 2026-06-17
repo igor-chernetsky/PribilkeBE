@@ -41,6 +41,7 @@ class PolandRentalCollector(BaseCollector):
                 for listing_type in (RentalListingType.SALE, RentalListingType.RENT):
                     segment_records, segment_issues = self._collect_segment(
                         city_slug=city.otodom_slug,
+                        location_path=city.otodom_location_path,
                         listing_type=listing_type,
                         room_count=room_count,
                     )
@@ -56,6 +57,7 @@ class PolandRentalCollector(BaseCollector):
         self,
         *,
         city_slug: str,
+        location_path: str,
         listing_type: RentalListingType,
         room_count: int,
     ) -> tuple[list[dict], list[RentalCollectorIssue]]:
@@ -63,7 +65,7 @@ class PolandRentalCollector(BaseCollector):
         issues: list[RentalCollectorIssue] = []
         for page in range(1, self.max_pages + 1):
             url = build_otodom_search_url(
-                city_slug=city_slug,
+                location_path=location_path,
                 listing_type=listing_type,
                 room_count=room_count,
                 page=page,
