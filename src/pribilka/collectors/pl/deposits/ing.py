@@ -1,6 +1,9 @@
+import logging
 import re
 
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 from pribilka.collectors.pl.deposits.base import BankDepositParser
 from pribilka.collectors.pl.deposits.http import (
@@ -39,9 +42,17 @@ class IngDepositParser(BankDepositParser):
     source_name = "ing_scraper"
 
     def parse(self) -> list[DepositOffer]:
-        offers = self._parse_rates_pdf(
-            fetch_bytes(ING_RATES_PDF_URL, headers=GOOGLEBOT_HEADERS)
-        )
+        offers: list[DepositOffer] = []
+        try:
+            offers = self._parse_rates_pdf(
+                fetch_bytes(ING_RATES_PDF_URL, headers=GOOGLEBOT_HEADERS)
+            )
+        except Exception:
+            logger.warning(
+                "%s: rates PDF unavailable, trying HTML fallbacks",
+                self.institution_name,
+                exc_info=True,
+            )
         if not offers:
             offers = self._parse_rates_table(fetch_text(ING_RATES_TABLE_URL))
         if not offers:

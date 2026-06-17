@@ -56,6 +56,18 @@ def test_ing_parser_extracts_rates_table():
     assert any(o.term_months == 6 and o.annual_interest_rate == 1.5 for o in offers)
 
 
+@patch("pribilka.collectors.pl.deposits.ing.fetch_text")
+@patch("pribilka.collectors.pl.deposits.ing.fetch_bytes")
+def test_ing_parser_falls_back_when_pdf_unavailable(mock_fetch_bytes, mock_fetch_text):
+    mock_fetch_bytes.side_effect = OSError("network unavailable")
+    mock_fetch_text.return_value = (FIXTURES / "ing_lokata.html").read_text()
+
+    offers = IngDepositParser().parse()
+
+    assert len(offers) == 5
+    assert mock_fetch_text.called
+
+
 def test_bankier_parser_extracts_offer_cards():
     html = (FIXTURES / "bankier_lokaty.html").read_text()
     offers = BankierDepositParser()._parse_offer_cards(html)
@@ -110,16 +122,18 @@ def test_mbank_promo_parser():
 @patch("pribilka.collectors.pl.deposits.velobank.fetch_text")
 @patch("pribilka.collectors.pl.deposits.santander.fetch_text")
 @patch("pribilka.collectors.pl.deposits.pko.fetch_text")
+@patch("pribilka.collectors.pl.deposits.ing.fetch_bytes")
 @patch("pribilka.collectors.pl.deposits.ing.fetch_text")
 @patch("pribilka.collectors.pl.deposits.mbank.fetch_text")
 def test_poland_collector_aggregates_parsers(
-    mock_mbank, mock_ing, mock_pko, mock_santander, mock_velo, mock_bankier, _mock_alerts
+    mock_mbank, mock_ing_text, mock_ing_bytes, mock_pko, mock_santander, mock_velo, mock_bankier, _mock_alerts
 ):
     mock_pko.side_effect = [
         (FIXTURES / "pko_lokata.html").read_text(),
         "",  # promo page — skip
     ]
-    mock_ing.return_value = (FIXTURES / "ing_lokata.html").read_text()
+    mock_ing_bytes.return_value = (FIXTURES / "ing_rates_pdf.txt").read_text().encode("cp1250")
+    mock_ing_text.return_value = (FIXTURES / "ing_lokata.html").read_text()
     mock_mbank.side_effect = [
         Exception("skip promo"),
         Exception("skip fund"),
