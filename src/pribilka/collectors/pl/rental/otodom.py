@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -24,6 +25,9 @@ OTODOM_HEADERS = {
     "Sec-Fetch-Site": "same-origin",
     "Sec-Fetch-User": "?1",
 }
+SEGMENT_REQUEST_DELAY_SEC = 2.0
+RETRYABLE_STATUS_CODES = frozenset({403, 429, 502, 503, 504})
+RETRY_BACKOFF_SEC = (4.0, 10.0, 25.0)
 ROOMS_NUMBER_PATTERN = re.compile(r'"roomsNumber"\s*:\s*"([A-Z_]+)"')
 PRICE_VALUE_PATTERN = re.compile(r'"value"\s*:\s*(\d+(?:\.\d+)?)\s*,\s*"currency"\s*:\s*"PLN"')
 AREA_PATTERN = re.compile(r'"areaInSquareMeters"\s*:\s*(\d+(?:\.\d+)?)')
@@ -50,12 +54,16 @@ def build_otodom_search_url(
     )
 
 
-def fetch_otodom_search_html(url: str, *, timeout: float = 25.0) -> str:
-    with httpx.Client(headers=OTODOM_HEADERS, follow_redirects=True, timeout=timeout) as client:
-        _warm_otodom_session(client)
-        response = client.get(url)
-        response.raise_for_status()
-        return response.text
+def create_otodom_client(*, timeout: float = 25.0) -> httpx.Client:
+    return httpx.Client(headers=OTODOM_HEADERS, follow_redirects=True, timeout=timeout)
+
+
+def fetch_otodom_search_html(url: str, *, timeout: float = 25.0, client: httpx.Client | None = None) -> str:
+    if client is None:
+        with create_otodom_client(timeout=timeout) as owned_client:
+            warm_otodom_session(owned_client)
+            return _get_with_retry(owned_client, url).text
+    return _get_with_retry(client, url).text
 
 
 def fetch_otodom_search_items(
@@ -66,44 +74,104 @@ def fetch_otodom_search_items(
     room_count: int,
     timeout: float = 25.0,
     source: str = "otodom",
+    client: httpx.Client | None = None,
 ) -> tuple[list[dict], str]:
     """Fetch a search page and parse listings, with JSON API fallback."""
-    with httpx.Client(headers=OTODOM_HEADERS, follow_redirects=True, timeout=timeout) as client:
-        _warm_otodom_session(client)
-        response = client.get(url)
-        response.raise_for_status()
-        html = response.text
+    if client is None:
+        with create_otodom_client(timeout=timeout) as owned_client:
+            warm_otodom_session(owned_client)
+            return _fetch_otodom_search_items_with_client(
+                owned_client,
+                url,
+                city_slug=city_slug,
+                listing_type=listing_type,
+                room_count=room_count,
+                source=source,
+            )
 
-        listings = parse_otodom_search_html(
-            html,
-            city_slug=city_slug,
-            listing_type=listing_type,
-            room_count=room_count,
-            source=source,
-        )
-        if listings:
-            return listings, html
+    return _fetch_otodom_search_items_with_client(
+        client,
+        url,
+        city_slug=city_slug,
+        listing_type=listing_type,
+        room_count=room_count,
+        source=source,
+    )
 
-        next_data = _extract_next_data(html)
-        build_id = _extract_build_id(next_data, html)
-        if build_id:
-            json_items = _fetch_search_items_via_next_json(client, url, build_id)
-            if json_items:
-                listings = _normalize_listings(
-                    json_items,
-                    city_slug=city_slug,
-                    listing_type=listing_type,
-                    room_count=room_count,
-                    source=source,
-                )
-                if listings:
-                    logger.info("Otodom JSON API fallback returned %d listings for %s", len(listings), city_slug)
-                    return listings, html
 
+def _fetch_otodom_search_items_with_client(
+    client: httpx.Client,
+    url: str,
+    *,
+    city_slug: str,
+    listing_type: RentalListingType,
+    room_count: int,
+    source: str,
+) -> tuple[list[dict], str]:
+    response = _get_with_retry(client, url)
+    html = response.text
+
+    listings = parse_otodom_search_html(
+        html,
+        city_slug=city_slug,
+        listing_type=listing_type,
+        room_count=room_count,
+        source=source,
+    )
+    if listings:
         return listings, html
 
+    next_data = _extract_next_data(html)
+    build_id = _extract_build_id(next_data, html)
+    if build_id:
+        json_items = _fetch_search_items_via_next_json(client, url, build_id)
+        if json_items:
+            listings = _normalize_listings(
+                json_items,
+                city_slug=city_slug,
+                listing_type=listing_type,
+                room_count=room_count,
+                source=source,
+            )
+            if listings:
+                logger.info("Otodom JSON API fallback returned %d listings for %s", len(listings), city_slug)
+                return listings, html
 
-def _warm_otodom_session(client: httpx.Client) -> None:
+    return listings, html
+
+
+def _get_with_retry(client: httpx.Client, url: str, *, headers: dict[str, str] | None = None) -> httpx.Response:
+    request_headers = headers or OTODOM_HEADERS
+    last_error: Exception | None = None
+
+    for attempt in range(len(RETRY_BACKOFF_SEC) + 1):
+        if attempt:
+            time.sleep(RETRY_BACKOFF_SEC[attempt - 1])
+        try:
+            response = client.get(url, headers=request_headers)
+            if response.status_code in RETRYABLE_STATUS_CODES and attempt < len(RETRY_BACKOFF_SEC):
+                logger.warning(
+                    "Otodom HTTP %s for %s, retry %d/%d",
+                    response.status_code,
+                    url,
+                    attempt + 1,
+                    len(RETRY_BACKOFF_SEC),
+                )
+                continue
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            if exc.response.status_code in RETRYABLE_STATUS_CODES and attempt < len(RETRY_BACKOFF_SEC):
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    raise RuntimeError(f"Otodom request failed for {url}")
+
+
+def warm_otodom_session(client: httpx.Client) -> None:
     try:
         client.get(
             f"{OTODOM_BASE}/",
@@ -204,7 +272,8 @@ def _fetch_search_items_via_next_json(
     if parsed.query:
         json_url = f"{json_url}?{parsed.query}"
 
-    response = client.get(
+    response = _get_with_retry(
+        client,
         json_url,
         headers={
             **OTODOM_HEADERS,
@@ -212,7 +281,6 @@ def _fetch_search_items_via_next_json(
             "x-nextjs-data": "1",
         },
     )
-    response.raise_for_status()
     payload = response.json()
     return _extract_search_ads_items({"props": {"pageProps": payload.get("pageProps", {})}})
 

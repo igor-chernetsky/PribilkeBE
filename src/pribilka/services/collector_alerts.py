@@ -54,6 +54,10 @@ def report_rental_collector_issues(issues: list[RentalCollectorIssue], total_rec
         return
 
     lines = ["⚠️ *Pribilka — problem z kolektorem Otodom (nieruchomości)*"]
+    if issues and total_records > 0:
+        lines.append(
+            f"• Zebrano *{total_records}* ogłoszeń, ale część segmentów się nie powiodła."
+        )
     if not issues and total_records == 0:
         lines.append(
             "• Kolektor zakończył się *0 ogłoszeń* bez szczegółowych błędów segmentów "

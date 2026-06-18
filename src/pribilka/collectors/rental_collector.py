@@ -1,13 +1,19 @@
 import logging
+import time
 from datetime import timedelta
+
+import httpx
 
 from pribilka.collectors.pl.deposits.http import is_bot_wall
 from pribilka.collectors.base import BaseCollector, CollectorConfig
 from pribilka.collectors.pl.rental.cities import POLAND_RENTAL_CITIES, TRACKED_ROOM_COUNTS
 from pribilka.collectors.pl.rental.issues import RentalCollectorIssue, RentalCollectorIssueKind
 from pribilka.collectors.pl.rental.otodom import (
+    SEGMENT_REQUEST_DELAY_SEC,
     build_otodom_search_url,
+    create_otodom_client,
     fetch_otodom_search_items,
+    warm_otodom_session,
 )
 from pribilka.models.enums import AssetClass, CountryCode, RentalListingType
 from pribilka.services.collector_alerts import report_rental_collector_issues
@@ -35,17 +41,21 @@ class PolandRentalCollector(BaseCollector):
     def collect(self) -> list[dict]:
         records: list[dict] = []
         issues: list[RentalCollectorIssue] = []
-        for city in POLAND_RENTAL_CITIES:
-            for room_count in TRACKED_ROOM_COUNTS:
-                for listing_type in (RentalListingType.SALE, RentalListingType.RENT):
-                    segment_records, segment_issues = self._collect_segment(
-                        city_slug=city.otodom_slug,
-                        location_path=city.otodom_location_path,
-                        listing_type=listing_type,
-                        room_count=room_count,
-                    )
-                    records.extend(segment_records)
-                    issues.extend(segment_issues)
+        with create_otodom_client() as client:
+            warm_otodom_session(client)
+            for city in POLAND_RENTAL_CITIES:
+                for room_count in TRACKED_ROOM_COUNTS:
+                    for listing_type in (RentalListingType.SALE, RentalListingType.RENT):
+                        segment_records, segment_issues = self._collect_segment(
+                            city_slug=city.otodom_slug,
+                            location_path=city.otodom_location_path,
+                            listing_type=listing_type,
+                            room_count=room_count,
+                            client=client,
+                        )
+                        records.extend(segment_records)
+                        issues.extend(segment_issues)
+                        time.sleep(SEGMENT_REQUEST_DELAY_SEC)
 
         self._last_issues = issues
         report_rental_collector_issues(issues, total_records=len(records))
@@ -59,6 +69,7 @@ class PolandRentalCollector(BaseCollector):
         location_path: str,
         listing_type: RentalListingType,
         room_count: int,
+        client: httpx.Client,
     ) -> tuple[list[dict], list[RentalCollectorIssue]]:
         segment: list[dict] = []
         issues: list[RentalCollectorIssue] = []
@@ -75,6 +86,7 @@ class PolandRentalCollector(BaseCollector):
                     city_slug=city_slug,
                     listing_type=listing_type,
                     room_count=room_count,
+                    client=client,
                 )
             except Exception as exc:
                 logger.warning(
@@ -85,17 +97,18 @@ class PolandRentalCollector(BaseCollector):
                     page,
                     exc,
                 )
-                issues.append(
-                    RentalCollectorIssue(
-                        city_slug=city_slug,
-                        listing_type=listing_type.value,
-                        room_count=room_count,
-                        page=page,
-                        url=url,
-                        kind=RentalCollectorIssueKind.FETCH_ERROR,
-                        error_message=str(exc),
+                if page == 1 or not segment:
+                    issues.append(
+                        RentalCollectorIssue(
+                            city_slug=city_slug,
+                            listing_type=listing_type.value,
+                            room_count=room_count,
+                            page=page,
+                            url=url,
+                            kind=RentalCollectorIssueKind.FETCH_ERROR,
+                            error_message=str(exc),
+                        )
                     )
-                )
                 break
 
             if not parsed:
