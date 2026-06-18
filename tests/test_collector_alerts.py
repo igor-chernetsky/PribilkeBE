@@ -75,6 +75,20 @@ def test_rental_alert_sent_on_fetch_error(mock_telegram, mock_get_redis):
 
 @patch("pribilka.services.collector_alerts.get_redis")
 @patch("pribilka.services.collector_alerts.send_admin_telegram")
+def test_rental_alert_sent_when_no_records_and_no_issues(mock_telegram, mock_get_redis):
+    from pribilka.services.collector_alerts import report_rental_collector_issues
+
+    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
+    mock_telegram.return_value = True
+
+    report_rental_collector_issues([], total_records=0)
+
+    mock_telegram.assert_called_once()
+    assert "0 ogłoszeń" in mock_telegram.call_args[0][0]
+
+
+@patch("pribilka.services.collector_alerts.get_redis")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_rental_alert_suppressed_by_cooldown(mock_telegram, mock_get_redis):
     from pribilka.collectors.pl.rental.issues import RentalCollectorIssue, RentalCollectorIssueKind
     from pribilka.services.collector_alerts import report_rental_collector_issues

@@ -50,10 +50,15 @@ def report_deposit_parse_results(results: list[ParserResult], total_records: int
 
 def report_rental_collector_issues(issues: list[RentalCollectorIssue], total_records: int) -> None:
     """Notify admin when Otodom rental collector cannot fetch or parse listings."""
-    if not issues:
+    if not issues and total_records > 0:
         return
 
     lines = ["⚠️ *Pribilka — problem z kolektorem Otodom (nieruchomości)*"]
+    if not issues and total_records == 0:
+        lines.append(
+            "• Kolektor zakończył się *0 ogłoszeń* bez szczegółowych błędów segmentów "
+            "(sprawdź deploy / logi workera)."
+        )
     for issue in issues[:12]:
         if issue.kind == RentalCollectorIssueKind.FETCH_ERROR:
             detail = f"błąd HTTP/połączenia\n  `{issue.error_message or 'unknown'}`"

@@ -7,8 +7,7 @@ from pribilka.collectors.pl.rental.cities import POLAND_RENTAL_CITIES, TRACKED_R
 from pribilka.collectors.pl.rental.issues import RentalCollectorIssue, RentalCollectorIssueKind
 from pribilka.collectors.pl.rental.otodom import (
     build_otodom_search_url,
-    fetch_otodom_search_html,
-    parse_otodom_search_html,
+    fetch_otodom_search_items,
 )
 from pribilka.models.enums import AssetClass, CountryCode, RentalListingType
 from pribilka.services.collector_alerts import report_rental_collector_issues
@@ -71,7 +70,12 @@ class PolandRentalCollector(BaseCollector):
                 page=page,
             )
             try:
-                html = fetch_otodom_search_html(url)
+                parsed, html = fetch_otodom_search_items(
+                    url,
+                    city_slug=city_slug,
+                    listing_type=listing_type,
+                    room_count=room_count,
+                )
             except Exception as exc:
                 logger.warning(
                     "Otodom fetch failed city=%s type=%s rooms=%s page=%s: %s",
@@ -94,12 +98,6 @@ class PolandRentalCollector(BaseCollector):
                 )
                 break
 
-            parsed = parse_otodom_search_html(
-                html,
-                city_slug=city_slug,
-                listing_type=listing_type,
-                room_count=room_count,
-            )
             if not parsed:
                 kind = (
                     RentalCollectorIssueKind.BOT_WALL
