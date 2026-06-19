@@ -12,10 +12,11 @@ from pribilka.models.rental_listing import RentalListing
 from pribilka.models.rental_market_snapshot import RentalMarketSnapshot
 from pribilka.models.rental_yield_snapshot import RentalYieldSnapshot
 from pribilka.services.rental_stats import (
-    distribution_stats,
+    DistributionStats,
     fresh_cutoff,
     truncate_to_12h_period,
     yield_stats,
+    distribution_stats,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,16 @@ def ingest_rental_listings(db: Session, records: list[dict]) -> int:
         yields,
     )
     return upserted
+
+
+def refresh_rental_snapshots_from_listings(db: Session) -> dict[str, int]:
+    """Recompute market/yield snapshots from listings already stored in the DB."""
+    now = datetime.now(UTC)
+    period_start = truncate_to_12h_period(now)
+    market = _write_market_snapshots(db, period_start=period_start, now=now)
+    yields = _write_yield_snapshots(db, period_start=period_start, now=now)
+    db.commit()
+    return {"market_snapshots": market, "yield_snapshots": yields}
 
 
 def _upsert_listings(db: Session, records: list[dict], *, now: datetime) -> int:
@@ -115,6 +126,28 @@ def _fresh_listings(
     )
 
 
+def _keep_existing_market_snapshot(
+    snapshot: RentalMarketSnapshot | None,
+    price_stats: DistributionStats,
+) -> bool:
+    """Avoid wiping a populated snapshot when a refresh finds no fresh listings."""
+    if price_stats.sample_size > 0:
+        return False
+    return snapshot is not None and snapshot.sample_size > 0
+
+
+def _keep_existing_yield_snapshot(
+    snapshot: RentalYieldSnapshot | None,
+    sale_sample_size: int,
+    rent_sample_size: int,
+) -> bool:
+    if sale_sample_size > 0 or rent_sample_size > 0:
+        return False
+    if snapshot is None:
+        return False
+    return snapshot.sale_sample_size > 0 or snapshot.rent_sample_size > 0
+
+
 def _write_market_snapshots(db: Session, *, period_start: datetime, now: datetime) -> int:
     written = 0
     for city in POLAND_RENTAL_CITIES:
@@ -143,6 +176,8 @@ def _write_market_snapshots(db: Session, *, period_start: datetime, now: datetim
                         RentalMarketSnapshot.period_start == period_start,
                     )
                 )
+                if _keep_existing_market_snapshot(snapshot, price_stats):
+                    continue
                 if snapshot is None:
                     snapshot = RentalMarketSnapshot(
                         city_slug=city.slug,
@@ -193,6 +228,12 @@ def _write_yield_snapshots(db: Session, *, period_start: datetime, now: datetime
                     RentalYieldSnapshot.period_start == period_start,
                 )
             )
+            if _keep_existing_yield_snapshot(
+                snapshot,
+                stats.sale_sample_size,
+                stats.rent_sample_size,
+            ):
+                continue
             if snapshot is None:
                 snapshot = RentalYieldSnapshot(
                     city_slug=city.slug,

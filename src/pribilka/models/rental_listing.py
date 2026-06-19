@@ -21,7 +21,10 @@ class RentalListing(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="otodom")
     external_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    listing_type: Mapped[RentalListingType] = mapped_column(Enum(RentalListingType), nullable=False)
+    listing_type: Mapped[RentalListingType] = mapped_column(
+        Enum(RentalListingType, native_enum=False, length=16),
+        nullable=False,
+    )
     city_slug: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     room_count: Mapped[int] = mapped_column(Integer, nullable=False)
     price_pln: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)

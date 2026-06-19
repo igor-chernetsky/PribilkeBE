@@ -47,7 +47,7 @@ class PolandRentalCollector(BaseCollector):
                 for room_count in TRACKED_ROOM_COUNTS:
                     for listing_type in (RentalListingType.SALE, RentalListingType.RENT):
                         segment_records, segment_issues = self._collect_segment(
-                            city_slug=city.otodom_slug,
+                            city_slug=city.slug,
                             location_path=city.otodom_location_path,
                             listing_type=listing_type,
                             room_count=room_count,

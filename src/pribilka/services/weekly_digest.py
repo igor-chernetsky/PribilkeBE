@@ -15,6 +15,7 @@ from pribilka.schemas.weekly_digest import DigestSection, WeeklyDigestContent
 from pribilka.services import market_data
 from pribilka.services.push_notifications import send_push_to_user
 from pribilka.services.telegram import send_admin_telegram
+from pribilka.services.rental_weekly_stats import collect_rental_weekly_stats
 from pribilka.services.trends_history import get_market_trends_history
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def collect_weekly_stats(db: Session, country: CountryCode) -> dict:
     bond_avg_now, bond_avg_start, bond_avg_delta = _series_delta(history.bonds.average)
     gold_now, gold_start, gold_delta = _series_delta(history.gold.spot)
 
-    return {
+    stats = {
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
         "summary": {
@@ -99,6 +100,16 @@ def collect_weekly_stats(db: Session, country: CountryCode) -> dict:
             for b in bonds
         ],
     }
+    if country == CountryCode.PL:
+        stats["rental"] = collect_rental_weekly_stats(db, days=7)
+    else:
+        stats["rental"] = {
+            "available": False,
+            "snapshot_periods": 0,
+            "cities": [],
+            "top_yield_cities": [],
+        }
+    return stats
 
 
 def _format_pp(value: float | None) -> str:
@@ -106,6 +117,85 @@ def _format_pp(value: float | None) -> str:
         return "n/a"
     sign = "+" if value >= 0 else ""
     return f"{sign}{value:.2f} pp"
+
+
+def _format_pln(value: float | None, locale: str) -> str:
+    if value is None:
+        return "brak danych" if locale == "pl" else "n/a"
+    text = f"{value:,.0f}".replace(",", " ")
+    return f"{text} zł" if locale == "pl" else f"{text} PLN"
+
+
+def _format_pln_delta(value: float | None, locale: str) -> str:
+    if value is None:
+        return "n/a"
+    sign = "+" if value >= 0 else ""
+    text = f"{sign}{value:,.0f}".replace(",", " ")
+    suffix = " zł" if locale == "pl" else " PLN"
+    return f"{text}{suffix}"
+
+
+def _city_name(city: dict, locale: str) -> str:
+    return city["name_pl"] if locale == "pl" else city["name_en"]
+
+
+def _rental_body(stats: dict, locale: str) -> str:
+    rental = stats.get("rental") or {}
+    if not rental.get("available"):
+        if locale == "pl":
+            return (
+                "Brak danych o rynku nieruchomości za ostatni tydzień — "
+                "kolektor Otodom jeszcze nie zebrał snapshotów w tym okresie."
+            )
+        return (
+            "No residential market data for the past week — "
+            "the Otodom collector has not produced snapshots in this period yet."
+        )
+
+    periods = rental["snapshot_periods"]
+    top = rental["top_yield_cities"]
+    leader = top[0]
+    leader_name = _city_name(leader, locale)
+
+    if locale == "pl":
+        intro = (
+            f"Na podstawie {periods} snapshotów z ostatnich 7 dni "
+            f"(mieszkania 2-pokojowe, ogłoszenia Otodom). "
+            f"Najwyższy szacunkowy yield brutto: {leader_name} — "
+            f"{leader['yield_now']:.2f}% ({_format_pp(leader.get('yield_delta_pp'))})."
+        )
+    else:
+        intro = (
+            f"Based on {periods} snapshots over the last 7 days "
+            f"(2-room Otodom listings). "
+            f"Highest estimated gross yield: {leader_name} — "
+            f"{leader['yield_now']:.2f}% ({_format_pp(leader.get('yield_delta_pp'))})."
+        )
+
+    warsaw = next((city for city in rental["cities"] if city["city_slug"] == "warszawa"), None)
+    if warsaw is None:
+        return intro
+
+    if locale == "pl":
+        detail = (
+            f"Warszawa: yield {warsaw['yield_now']:.2f}% "
+            f"({_format_pp(warsaw.get('yield_delta_pp'))}), "
+            f"mediana sprzedaży {_format_pln(warsaw.get('sale_median_now'), locale)} "
+            f"({_format_pln_delta(warsaw.get('sale_median_delta'), locale)}), "
+            f"wynajem {_format_pln(warsaw.get('rent_median_now'), locale)}/mies. "
+            f"({_format_pln_delta(warsaw.get('rent_median_delta'), locale)})."
+        )
+    else:
+        detail = (
+            f"Warsaw: yield {warsaw['yield_now']:.2f}% "
+            f"({_format_pp(warsaw.get('yield_delta_pp'))}), "
+            f"sale median {_format_pln(warsaw.get('sale_median_now'), locale)} "
+            f"({_format_pln_delta(warsaw.get('sale_median_delta'), locale)}), "
+            f"rent {_format_pln(warsaw.get('rent_median_now'), locale)}/mo "
+            f"({_format_pln_delta(warsaw.get('rent_median_delta'), locale)})."
+        )
+
+    return f"{intro} {detail}"
 
 
 def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
@@ -118,8 +208,9 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
     if locale == "pl":
         title = f"Tygodniowy przegląd rynku ({week_start} – {week_end})"
         summary = (
-            "Oto skrót zmian na polskim rynku lokat, obligacji skarbowych i złota "
-            "z ostatnich 7 dni. To podsumowanie informacyjne, nie rekomendacja inwestycyjna."
+            "Oto skrót zmian na polskim rynku lokat, obligacji skarbowych, złota "
+            "i nieruchomości (wynajem) z ostatnich 7 dni. "
+            "To podsumowanie informacyjne, nie rekomendacja inwestycyjna."
         )
         sections = [
             DigestSection(
@@ -147,6 +238,10 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
                 ),
             ),
             DigestSection(
+                heading="Nieruchomości",
+                body=_rental_body(stats, locale),
+            ),
+            DigestSection(
                 heading="Warte uwagi",
                 body=_top_picks_body(stats, locale),
             ),
@@ -155,8 +250,9 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
 
     title = f"Weekly market digest ({week_start} – {week_end})"
     summary = (
-        "A concise look at how Polish deposit rates, government bonds, and gold moved "
-        "over the last 7 days. Informational only — not investment advice."
+        "A concise look at how Polish deposit rates, government bonds, gold, "
+        "and residential rental yields moved over the last 7 days. "
+        "Informational only — not investment advice."
     )
     sections = [
         DigestSection(
@@ -182,6 +278,10 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
                 f"Gold (weekly average point): {gold['spot_now'] or 'n/a'}. "
                 f"USD/PLN: {stats['summary'].get('usd_pln') or 'n/a'}."
             ),
+        ),
+        DigestSection(
+            heading="Real estate",
+            body=_rental_body(stats, locale),
         ),
         DigestSection(
             heading="Top picks",
@@ -274,7 +374,7 @@ def _build_openai_content(stats: dict) -> tuple[dict, dict] | None:
             "Return a single JSON object with EXACTLY two top-level keys: \"en\" and \"pl\".\n"
             "Each value must be an object: "
             '{"title":"...","summary":"...","sections":[{"heading":"...","body":"..."}]}\n'
-            "Use exactly 4 sections in this order: deposits, government bonds, gold & FX, top picks.\n"
+            "Use exactly 5 sections in this order: deposits, government bonds, gold & FX, real estate, top picks.\n"
             "2-3 sentences per section body. No buy/sell advice. No invented numbers.\n"
             f"STATS:\n{json.dumps(stats, default=str)}"
         )

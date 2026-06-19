@@ -116,3 +116,52 @@ def test_ingest_rental_listings_writes_snapshots():
     assert yield_snapshot.gross_yield_median is not None
 
     db.close()
+
+
+def test_ingest_preserves_snapshot_when_refresh_is_empty():
+    db = _make_session()
+    now = datetime(2026, 6, 7, 13, 0, tzinfo=UTC)
+    records = [
+        {
+            "source": "otodom",
+            "external_id": "sale-1",
+            "listing_type": RentalListingType.SALE,
+            "city_slug": "warszawa",
+            "room_count": 2,
+            "price_pln": 600_000,
+            "area_sqm": 50,
+            "price_per_sqm": 12_000,
+            "title": "Sale 1",
+            "url": "https://example.com/sale-1",
+            "published_at": now,
+        },
+    ]
+
+    ingest_rental_listings(db, records)
+    period_start = truncate_to_12h_period(datetime.now(UTC))
+    before = db.scalar(
+        select(RentalMarketSnapshot).where(
+            RentalMarketSnapshot.city_slug == "warszawa",
+            RentalMarketSnapshot.listing_type == RentalListingType.SALE,
+            RentalMarketSnapshot.room_count == 2,
+            RentalMarketSnapshot.period_start == period_start,
+        )
+    )
+    assert before is not None
+    assert before.sample_size == 1
+    assert float(before.price_median) == 600_000
+
+    ingest_rental_listings(db, [])
+    after = db.scalar(
+        select(RentalMarketSnapshot).where(
+            RentalMarketSnapshot.city_slug == "warszawa",
+            RentalMarketSnapshot.listing_type == RentalListingType.SALE,
+            RentalMarketSnapshot.room_count == 2,
+            RentalMarketSnapshot.period_start == period_start,
+        )
+    )
+    assert after is not None
+    assert after.sample_size == 1
+    assert float(after.price_median) == 600_000
+
+    db.close()

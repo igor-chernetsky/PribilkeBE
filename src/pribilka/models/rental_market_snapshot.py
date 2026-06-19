@@ -25,7 +25,10 @@ class RentalMarketSnapshot(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     city_slug: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    listing_type: Mapped[RentalListingType] = mapped_column(Enum(RentalListingType), nullable=False)
+    listing_type: Mapped[RentalListingType] = mapped_column(
+        Enum(RentalListingType, native_enum=False, length=16),
+        nullable=False,
+    )
     room_count: Mapped[int] = mapped_column(Integer, nullable=False)
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     sample_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
