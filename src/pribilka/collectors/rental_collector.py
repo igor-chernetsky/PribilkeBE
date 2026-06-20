@@ -6,7 +6,12 @@ import httpx
 
 from pribilka.collectors.pl.deposits.http import is_bot_wall
 from pribilka.collectors.base import BaseCollector, CollectorConfig
-from pribilka.collectors.pl.rental.cities import POLAND_RENTAL_CITIES, TRACKED_ROOM_COUNTS
+from pribilka.collectors.pl.rental.cities import (
+    POLAND_RENTAL_CITIES,
+    TRACKED_ROOM_COUNTS,
+    current_rental_partition,
+    rental_cities_for_partition,
+)
 from pribilka.collectors.pl.rental.issues import RentalCollectorIssue, RentalCollectorIssueKind
 from pribilka.collectors.pl.rental.otodom import (
     SEGMENT_REQUEST_DELAY_SEC,
@@ -22,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class PolandRentalCollector(BaseCollector):
-    def __init__(self, *, max_pages: int = 2):
+    def __init__(self, *, max_pages: int = 2, partition: int | None = None):
         super().__init__(
             CollectorConfig(
                 asset_class=AssetClass.BANK_DEPOSIT,
@@ -32,6 +37,12 @@ class PolandRentalCollector(BaseCollector):
             )
         )
         self.max_pages = max_pages
+        self.partition = partition
+        self.cities = (
+            rental_cities_for_partition(partition)
+            if partition is not None
+            else POLAND_RENTAL_CITIES
+        )
         self._last_issues: list[RentalCollectorIssue] = []
 
     @property
@@ -43,7 +54,7 @@ class PolandRentalCollector(BaseCollector):
         issues: list[RentalCollectorIssue] = []
         with create_otodom_client() as client:
             warm_otodom_session(client)
-            for city in POLAND_RENTAL_CITIES:
+            for city in self.cities:
                 for room_count in TRACKED_ROOM_COUNTS:
                     for listing_type in (RentalListingType.SALE, RentalListingType.RENT):
                         segment_records, segment_issues = self._collect_segment(
@@ -59,7 +70,13 @@ class PolandRentalCollector(BaseCollector):
 
         self._last_issues = issues
         report_rental_collector_issues(issues, total_records=len(records))
-        logger.info("Collected %d rental listings (%d issues)", len(records), len(issues))
+        logger.info(
+            "Collected %d rental listings (%d issues, partition=%s, cities=%s)",
+            len(records),
+            len(issues),
+            self.partition,
+            [city.slug for city in self.cities],
+        )
         return records
 
     def _collect_segment(

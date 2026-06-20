@@ -35,7 +35,7 @@ celery_app.conf.update(
         },
         "collect-rental": {
             "task": "pribilka.workers.tasks.run_collector",
-            "schedule": crontab(minute=30, hour="*/12"),
+            "schedule": crontab(minute=30, hour="*/3"),
             "args": ["rental"],
         },
         "weekly-digest": {
