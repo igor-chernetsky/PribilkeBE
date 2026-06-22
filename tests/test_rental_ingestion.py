@@ -165,3 +165,72 @@ def test_ingest_preserves_snapshot_when_refresh_is_empty():
     assert float(after.price_median) == 600_000
 
     db.close()
+
+
+def test_ingest_revives_stale_listing_without_stale_data_error():
+    """Stale listing re-collected must not be deleted by purge before flush."""
+    from datetime import timedelta
+
+    db = _make_session()
+    stale_at = datetime.now(UTC) - timedelta(hours=72)
+    now = datetime.now(UTC)
+
+    db.add(
+        RentalListing(
+            source="otodom",
+            external_id="stale-sale-1",
+            listing_type=RentalListingType.SALE,
+            city_slug="lublin",
+            room_count=2,
+            price_pln=500_000,
+            first_seen_at=stale_at,
+            last_seen_at=stale_at,
+        )
+    )
+    db.commit()
+
+    records = [
+        {
+            "source": "otodom",
+            "external_id": "stale-sale-1",
+            "listing_type": RentalListingType.SALE,
+            "city_slug": "lublin",
+            "room_count": 2,
+            "price_pln": 510_000,
+            "area_sqm": 50,
+            "price_per_sqm": 10_200,
+            "title": "Sale refreshed",
+            "url": "https://example.com/stale-sale-1",
+            "published_at": now,
+        },
+    ]
+
+    ingested = ingest_rental_listings(db, records, city_slugs=["lublin"])
+    assert ingested == 1
+
+    listing = db.scalar(
+        select(RentalListing).where(
+            RentalListing.source == "otodom",
+            RentalListing.external_id == "stale-sale-1",
+        )
+    )
+    assert listing is not None
+    assert float(listing.price_pln) == 510_000
+    seen_at = listing.last_seen_at
+    if seen_at.tzinfo is None:
+        seen_at = seen_at.replace(tzinfo=UTC)
+    assert seen_at >= now - timedelta(minutes=1)
+
+    period_start = truncate_to_12h_period(datetime.now(UTC))
+    snapshot = db.scalar(
+        select(RentalMarketSnapshot).where(
+            RentalMarketSnapshot.city_slug == "lublin",
+            RentalMarketSnapshot.listing_type == RentalListingType.SALE,
+            RentalMarketSnapshot.room_count == 2,
+            RentalMarketSnapshot.period_start == period_start,
+        )
+    )
+    assert snapshot is not None
+    assert snapshot.sample_size == 1
+
+    db.close()

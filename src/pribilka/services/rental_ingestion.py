@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from collections.abc import Sequence
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -24,13 +26,26 @@ logger = logging.getLogger(__name__)
 FRESH_LISTING_MAX_AGE_HOURS = 48
 
 
-def ingest_rental_listings(db: Session, records: list[dict]) -> int:
+def ingest_rental_listings(
+    db: Session,
+    records: list[dict],
+    *,
+    city_slugs: Sequence[str] | None = None,
+) -> int:
     now = datetime.now(UTC)
     period_start = truncate_to_12h_period(now)
     upserted = _upsert_listings(db, records, now=now)
+    # Flush before purge so refreshed listings persist last_seen_at in DB.
+    # Otherwise purge deletes rows that upsert just revived (>48h stale),
+    # and commit fails with "expected to update N row(s); 0 were matched".
+    db.flush()
     removed = _purge_stale_listings(db, now=now)
-    snapshots = _write_market_snapshots(db, period_start=period_start, now=now)
-    yields = _write_yield_snapshots(db, period_start=period_start, now=now)
+    snapshots = _write_market_snapshots(
+        db, period_start=period_start, now=now, city_slugs=city_slugs
+    )
+    yields = _write_yield_snapshots(
+        db, period_start=period_start, now=now, city_slugs=city_slugs
+    )
     db.commit()
     logger.info(
         "Rental ingest: upserted=%d removed=%d market_snapshots=%d yield_snapshots=%d",
@@ -46,8 +61,8 @@ def refresh_rental_snapshots_from_listings(db: Session) -> dict[str, int]:
     """Recompute market/yield snapshots from listings already stored in the DB."""
     now = datetime.now(UTC)
     period_start = truncate_to_12h_period(now)
-    market = _write_market_snapshots(db, period_start=period_start, now=now)
-    yields = _write_yield_snapshots(db, period_start=period_start, now=now)
+    market = _write_market_snapshots(db, period_start=period_start, now=now, city_slugs=None)
+    yields = _write_yield_snapshots(db, period_start=period_start, now=now, city_slugs=None)
     db.commit()
     return {"market_snapshots": market, "yield_snapshots": yields}
 
@@ -148,9 +163,25 @@ def _keep_existing_yield_snapshot(
     return snapshot.sale_sample_size > 0 or snapshot.rent_sample_size > 0
 
 
-def _write_market_snapshots(db: Session, *, period_start: datetime, now: datetime) -> int:
-    written = 0
+def _iter_snapshot_cities(city_slugs: Sequence[str] | None):
+    if city_slugs is None:
+        yield from POLAND_RENTAL_CITIES
+        return
+    allowed = set(city_slugs)
     for city in POLAND_RENTAL_CITIES:
+        if city.slug in allowed:
+            yield city
+
+
+def _write_market_snapshots(
+    db: Session,
+    *,
+    period_start: datetime,
+    now: datetime,
+    city_slugs: Sequence[str] | None,
+) -> int:
+    written = 0
+    for city in _iter_snapshot_cities(city_slugs):
         for room_count in TRACKED_ROOM_COUNTS:
             for listing_type in (RentalListingType.SALE, RentalListingType.RENT):
                 listings = _fresh_listings(
@@ -198,9 +229,15 @@ def _write_market_snapshots(db: Session, *, period_start: datetime, now: datetim
     return written
 
 
-def _write_yield_snapshots(db: Session, *, period_start: datetime, now: datetime) -> int:
+def _write_yield_snapshots(
+    db: Session,
+    *,
+    period_start: datetime,
+    now: datetime,
+    city_slugs: Sequence[str] | None,
+) -> int:
     written = 0
-    for city in POLAND_RENTAL_CITIES:
+    for city in _iter_snapshot_cities(city_slugs):
         for room_count in TRACKED_ROOM_COUNTS:
             sale_listings = _fresh_listings(
                 db,

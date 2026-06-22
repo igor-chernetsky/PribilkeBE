@@ -7,6 +7,7 @@ from pribilka.collectors.pl.deposits.parse_result import ParseStatus, ParserResu
 from pribilka.collectors.pl.rental.issues import RentalCollectorIssue, RentalCollectorIssueKind
 from pribilka.config import get_settings
 from pribilka.services.redis_client import get_redis
+from pribilka.services.rental_city_coverage import RentalCityDataGap
 from pribilka.services.telegram import send_admin_telegram
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,44 @@ def report_rental_collector_issues(issues: list[RentalCollectorIssue], total_rec
     lines.append(f"\nZebrano ogłoszeń w tym przebiegu: *{total_records}*")
     lines.append(f"\n_{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}_")
     _send_with_cooldown("\n".join(lines), alert_key="rental_collector_summary")
+
+
+def report_rental_city_data_gaps(
+    gaps: list[RentalCityDataGap],
+    *,
+    partition: int | None = None,
+    total_records: int = 0,
+) -> None:
+    """Notify admin when expected cities have no usable sale/rent/yield medians."""
+    if not gaps:
+        return
+
+    lines = ["⚠️ *Pribilka — brak danych nieruchomości dla miast*"]
+    if partition is not None:
+        lines.append(f"Partycja kolektora: *{partition}*")
+    lines.append(f"Zebrano ogłoszeń w przebiegu: *{total_records}*")
+    lines.append("")
+
+    for gap in gaps:
+        missing: list[str] = []
+        if gap.missing_sale:
+            missing.append("sprzedaż")
+        if gap.missing_rent:
+            missing.append("wynajem")
+        if gap.missing_yield:
+            missing.append("yield")
+        lines.append(
+            f"• *{gap.name_pl}* (`{gap.city_slug}`): brak {', '.join(missing)}\n"
+            f"  ogłoszeń w tym przebiegu: {gap.records_collected}, "
+            f"w bazie (<48h): {gap.listing_count}"
+        )
+
+    lines.append(
+        "\nSprawdź logi workera (403 Otodom?) lub uruchom partycję ręcznie."
+    )
+    lines.append(f"\n_{datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}_")
+    alert_key = f"rental_city_gaps_p{partition}" if partition is not None else "rental_city_gaps"
+    _send_with_cooldown("\n".join(lines), alert_key=alert_key)
 
 
 def _send_with_cooldown(message: str, alert_key: str) -> None:

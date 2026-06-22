@@ -114,6 +114,37 @@ def test_rental_alert_suppressed_by_cooldown(mock_telegram, mock_get_redis):
 
 @patch("pribilka.services.collector_alerts.get_redis")
 @patch("pribilka.services.collector_alerts.send_admin_telegram")
+def test_rental_city_gap_alert_sent(mock_telegram, mock_get_redis):
+    from pribilka.services.collector_alerts import report_rental_city_data_gaps
+    from pribilka.services.rental_city_coverage import RentalCityDataGap
+
+    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
+    mock_telegram.return_value = True
+
+    report_rental_city_data_gaps(
+        [
+            RentalCityDataGap(
+                city_slug="lublin",
+                name_pl="Lublin",
+                missing_sale=True,
+                missing_rent=True,
+                missing_yield=True,
+                listing_count=0,
+                records_collected=0,
+            )
+        ],
+        partition=2,
+        total_records=120,
+    )
+
+    mock_telegram.assert_called_once()
+    message = mock_telegram.call_args[0][0]
+    assert "Lublin" in message
+    assert "Partycja kolektora: *2*" in message
+
+
+@patch("pribilka.services.collector_alerts.get_redis")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_no_alert_for_supplementary_empty_parser(mock_telegram, mock_get_redis):
     mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
 

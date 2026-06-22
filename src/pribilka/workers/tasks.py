@@ -10,8 +10,10 @@ from pribilka.collectors.pl.rental.cities import current_rental_partition
 from pribilka.db.session import SessionLocal
 from pribilka.models.enums import CountryCode
 from pribilka.services.alert_engine import evaluate_alerts
+from pribilka.services.collector_alerts import report_rental_city_data_gaps
 from pribilka.services.collector_status import save_collector_run
 from pribilka.services.ingestion import ingest_bonds, ingest_deposits, ingest_fx, ingest_gold
+from pribilka.services.rental_city_coverage import assess_rental_city_coverage
 from pribilka.services.rental_ingestion import ingest_rental_listings
 from pribilka.services.weekly_digest import generate_weekly_digest, notify_weekly_digest_subscribers
 from pribilka.workers.celery_app import celery_app
@@ -61,7 +63,25 @@ def run_collector(collector_key: str, partition: int | None = None) -> dict:
 
         db = SessionLocal()
         try:
-            ingested = ingest_fn(db, records)
+            if collector_key == "rental":
+                city_slugs = [city.slug for city in collector.cities]
+                records_by_city: dict[str, int] = {}
+                for record in records:
+                    slug = record["city_slug"]
+                    records_by_city[slug] = records_by_city.get(slug, 0) + 1
+                ingested = ingest_fn(db, records, city_slugs=city_slugs)
+                gaps = assess_rental_city_coverage(
+                    db,
+                    city_slugs,
+                    records_by_city=records_by_city,
+                )
+                report_rental_city_data_gaps(
+                    gaps,
+                    partition=active_partition,
+                    total_records=len(records),
+                )
+            else:
+                ingested = ingest_fn(db, records)
             if collector_key in ("deposit", "bond"):
                 evaluate_alerts(db, country=CountryCode.PL)
         finally:
