@@ -11,15 +11,17 @@ from pribilka.models.enums import AssetClass, CountryCode, CurrencyCode, RiskLev
 from pribilka.models.financial_instrument import FinancialInstrument
 from pribilka.models.fx_rate import FxRate
 from pribilka.models.gold_price import GoldPrice
+from pribilka.models.weekly_digest import WeeklyDigest
 from pribilka.schemas.common import (
     BondResponse,
     DepositResponse,
+    DigestTeaserResponse,
     FxResponse,
     GoldResponse,
     MarketSummaryResponse,
 )
 from pribilka.services.institution_slugs import resolve_bank_slug
-from pribilka.services.rental_market import get_avg_rental_yield_glance
+from pribilka.services.rental_market import RentalYieldGlance, get_rental_yield_glance
 from pribilka.services.risk_levels import resolve_risk_level
 
 
@@ -269,6 +271,53 @@ def list_fx_rates(db: Session, country: CountryCode | None = None) -> list[FxRes
     ]
 
 
+def _format_rental_highlight(city_name: str, yield_pct: float, *, locale: str) -> str:
+    if locale.lower().startswith("pl"):
+        return f"Najlepsza rentowność: {city_name} · {yield_pct:.1f}%"
+    return f"Top rental yield: {city_name} · {yield_pct:.1f}%"
+
+
+def _digest_locale_content(digest: WeeklyDigest, locale: str) -> tuple[str, str]:
+    data = digest.content_pl if locale.lower().startswith("pl") else digest.content_en
+    return data.get("title", ""), data.get("summary", "")
+
+
+def _build_digest_teaser(db: Session, country: CountryCode, rental: RentalYieldGlance) -> DigestTeaserResponse | None:
+    highlight_pl = None
+    highlight_en = None
+    if rental.best_yield is not None and rental.city_name_pl and rental.city_name_en:
+        highlight_pl = _format_rental_highlight(rental.city_name_pl, rental.best_yield, locale="pl")
+        highlight_en = _format_rental_highlight(rental.city_name_en, rental.best_yield, locale="en")
+
+    digest = db.scalar(
+        select(WeeklyDigest)
+        .where(WeeklyDigest.country == country)
+        .order_by(desc(WeeklyDigest.week_start))
+        .limit(1)
+    )
+    if digest is None:
+        if highlight_pl is None:
+            return None
+        return DigestTeaserResponse(
+            available=False,
+            highlight_pl=highlight_pl,
+            highlight_en=highlight_en,
+        )
+
+    content_pl = _digest_locale_content(digest, "pl")
+    content_en = _digest_locale_content(digest, "en")
+    return DigestTeaserResponse(
+        available=True,
+        week_start=digest.week_start,
+        title_pl=content_pl[0],
+        title_en=content_en[0],
+        summary_pl=content_pl[1],
+        summary_en=content_en[1],
+        highlight_pl=highlight_pl or content_pl[1],
+        highlight_en=highlight_en or content_en[1],
+    )
+
+
 def get_market_summary(db: Session, country: CountryCode | None = None) -> MarketSummaryResponse:
     country = country or _default_country()
 
@@ -304,6 +353,22 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
         .where(FinancialInstrument.country == country, FinancialInstrument.is_active.is_(True))
     )
 
+    avg_deposit_rate = db.scalar(
+        select(func.avg(BankDeposit.annual_interest_rate))
+        .join(FinancialInstrument)
+        .where(FinancialInstrument.country == country, FinancialInstrument.is_active.is_(True))
+    )
+
+    avg_bond_yield = db.scalar(
+        select(func.avg(Bond.yield_to_maturity))
+        .join(FinancialInstrument)
+        .where(
+            FinancialInstrument.country == country,
+            FinancialInstrument.is_active.is_(True),
+            Bond.yield_to_maturity.is_not(None),
+        )
+    )
+
     gold = get_latest_gold(db, country)
     fx_rates = list_fx_rates(db, country)
 
@@ -320,7 +385,8 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
         )
     )
 
-    avg_rental_yield, rental_yield_room_count = get_avg_rental_yield_glance(db)
+    rental_glance = get_rental_yield_glance(db)
+    digest_teaser = _build_digest_teaser(db, country, rental_glance)
 
     return MarketSummaryResponse(
         country=country,
@@ -328,10 +394,18 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
         bonds_count=bonds_count,
         best_deposit_rate=float(best_deposit_rate) if best_deposit_rate else None,
         best_bond_yield=float(best_bond_yield) if best_bond_yield else None,
+        avg_deposit_yield=float(avg_deposit_rate) if avg_deposit_rate is not None else None,
+        avg_bond_yield=float(avg_bond_yield) if avg_bond_yield is not None else None,
         gold_spot_price=gold.spot_price if gold else None,
+        gold_daily_change_percent=gold.daily_change_percent if gold else None,
         usd_pln_rate=usd_pln,
         eur_pln_rate=eur_pln,
-        avg_rental_yield=avg_rental_yield,
-        rental_yield_room_count=rental_yield_room_count,
+        best_rental_yield=rental_glance.best_yield,
+        best_rental_yield_city_slug=rental_glance.city_slug,
+        best_rental_yield_city_name_pl=rental_glance.city_name_pl,
+        best_rental_yield_city_name_en=rental_glance.city_name_en,
+        rental_yield_room_count=rental_glance.room_count,
+        rental_yield_updated_at=rental_glance.updated_at,
+        digest_teaser=digest_teaser,
         updated_at=latest_update,
     )

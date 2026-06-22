@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -109,15 +109,34 @@ class FxResponse(BaseSchema):
     last_collected_at: datetime | None
 
 
+class DigestTeaserResponse(BaseSchema):
+    available: bool = False
+    week_start: date | None = None
+    title_pl: str | None = None
+    title_en: str | None = None
+    summary_pl: str | None = None
+    summary_en: str | None = None
+    highlight_pl: str | None = None
+    highlight_en: str | None = None
+
+
 class MarketSummaryResponse(BaseSchema):
     country: CountryCode
     deposits_count: int
     bonds_count: int
     best_deposit_rate: float | None
     best_bond_yield: float | None
+    avg_deposit_yield: float | None = None
+    avg_bond_yield: float | None = None
     gold_spot_price: float | None
+    gold_daily_change_percent: float | None = None
     usd_pln_rate: float | None
     eur_pln_rate: float | None
-    avg_rental_yield: float | None = None
+    best_rental_yield: float | None = None
+    best_rental_yield_city_slug: str | None = None
+    best_rental_yield_city_name_pl: str | None = None
+    best_rental_yield_city_name_en: str | None = None
     rental_yield_room_count: int | None = None
+    rental_yield_updated_at: datetime | None = None
+    digest_teaser: DigestTeaserResponse | None = None
     updated_at: datetime | None

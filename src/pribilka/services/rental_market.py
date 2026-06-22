@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import desc, select
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 from pribilka.collectors.pl.rental.cities import POLAND_RENTAL_CITIES, TRACKED_ROOM_COUNTS
 
 _GLANCE_ROOM_COUNT = 2
+_CITY_BY_SLUG = {city.slug: city for city in POLAND_RENTAL_CITIES}
 from pribilka.models.enums import RentalListingType
 from pribilka.models.rental_market_snapshot import RentalMarketSnapshot
 from pribilka.models.rental_yield_snapshot import RentalYieldSnapshot
@@ -20,6 +22,48 @@ from pribilka.schemas.rental import (
     RentalYieldSegmentResponse,
     RentalYieldTrendSeries,
 )
+
+
+@dataclass(frozen=True)
+class RentalYieldGlance:
+    best_yield: float | None
+    city_slug: str | None
+    city_name_pl: str | None
+    city_name_en: str | None
+    room_count: int | None
+    updated_at: datetime | None
+
+
+def get_rental_yield_glance(db: Session) -> RentalYieldGlance:
+    """Best gross rental yield city for the latest snapshot period (2-room flats)."""
+    latest_period = db.scalar(
+        select(RentalYieldSnapshot.period_start)
+        .order_by(desc(RentalYieldSnapshot.period_start))
+        .limit(1)
+    )
+    if latest_period is None:
+        return RentalYieldGlance(None, None, None, None, None, None)
+
+    rows = db.scalars(
+        select(RentalYieldSnapshot).where(
+            RentalYieldSnapshot.period_start == latest_period,
+            RentalYieldSnapshot.room_count == _GLANCE_ROOM_COUNT,
+            RentalYieldSnapshot.gross_yield_median.is_not(None),
+        )
+    ).all()
+    if not rows:
+        return RentalYieldGlance(None, None, None, None, None, None)
+
+    best_row = max(rows, key=lambda row: float(row.gross_yield_median))
+    city = _CITY_BY_SLUG.get(best_row.city_slug)
+    return RentalYieldGlance(
+        best_yield=float(best_row.gross_yield_median),
+        city_slug=best_row.city_slug,
+        city_name_pl=city.name_pl if city else best_row.city_slug,
+        city_name_en=city.name_en if city else best_row.city_slug,
+        room_count=_GLANCE_ROOM_COUNT,
+        updated_at=latest_period,
+    )
 
 
 def get_avg_rental_yield_glance(db: Session) -> tuple[float | None, int | None]:
