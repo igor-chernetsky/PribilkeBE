@@ -19,6 +19,7 @@ from pribilka.schemas.common import (
     MarketSummaryResponse,
 )
 from pribilka.services.institution_slugs import resolve_bank_slug
+from pribilka.services.rental_market import get_avg_rental_yield_glance
 from pribilka.services.risk_levels import resolve_risk_level
 
 
@@ -319,6 +320,8 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
         )
     )
 
+    avg_rental_yield, rental_yield_room_count = get_avg_rental_yield_glance(db)
+
     return MarketSummaryResponse(
         country=country,
         deposits_count=deposits_count,
@@ -328,5 +331,7 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
         gold_spot_price=gold.spot_price if gold else None,
         usd_pln_rate=usd_pln,
         eur_pln_rate=eur_pln,
+        avg_rental_yield=avg_rental_yield,
+        rental_yield_room_count=rental_yield_room_count,
         updated_at=latest_update,
     )

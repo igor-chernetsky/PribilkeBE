@@ -118,4 +118,6 @@ class MarketSummaryResponse(BaseSchema):
     gold_spot_price: float | None
     usd_pln_rate: float | None
     eur_pln_rate: float | None
+    avg_rental_yield: float | None = None
+    rental_yield_room_count: int | None = None
     updated_at: datetime | None

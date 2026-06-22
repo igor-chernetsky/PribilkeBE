@@ -4,6 +4,8 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from pribilka.collectors.pl.rental.cities import POLAND_RENTAL_CITIES, TRACKED_ROOM_COUNTS
+
+_GLANCE_ROOM_COUNT = 2
 from pribilka.models.enums import RentalListingType
 from pribilka.models.rental_market_snapshot import RentalMarketSnapshot
 from pribilka.models.rental_yield_snapshot import RentalYieldSnapshot
@@ -18,6 +20,33 @@ from pribilka.schemas.rental import (
     RentalYieldSegmentResponse,
     RentalYieldTrendSeries,
 )
+
+
+def get_avg_rental_yield_glance(db: Session) -> tuple[float | None, int | None]:
+    """Average gross rental yield across tracked cities for the latest snapshot period."""
+    latest_period = db.scalar(
+        select(RentalYieldSnapshot.period_start)
+        .order_by(desc(RentalYieldSnapshot.period_start))
+        .limit(1)
+    )
+    if latest_period is None:
+        return None, None
+
+    medians = [
+        float(row)
+        for row in db.scalars(
+            select(RentalYieldSnapshot.gross_yield_median).where(
+                RentalYieldSnapshot.period_start == latest_period,
+                RentalYieldSnapshot.room_count == _GLANCE_ROOM_COUNT,
+                RentalYieldSnapshot.gross_yield_median.is_not(None),
+            )
+        ).all()
+        if row is not None
+    ]
+    if not medians:
+        return None, None
+
+    return sum(medians) / len(medians), _GLANCE_ROOM_COUNT
 
 
 def list_rental_cities() -> list[RentalCityResponse]:
