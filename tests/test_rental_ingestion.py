@@ -234,3 +234,51 @@ def test_ingest_revives_stale_listing_without_stale_data_error():
     assert snapshot.sample_size == 1
 
     db.close()
+
+
+def test_ingest_dedupes_duplicate_external_ids_in_one_batch():
+    db = _make_session()
+    now = datetime(2026, 6, 22, 10, 0, tzinfo=UTC)
+    records = [
+        {
+            "source": "otodom",
+            "external_id": "68081516",
+            "listing_type": RentalListingType.SALE,
+            "city_slug": "lublin",
+            "room_count": 2,
+            "price_pln": 500_000,
+            "area_sqm": 50,
+            "price_per_sqm": 10_000,
+            "title": "First copy",
+            "url": "https://example.com/68081516",
+            "published_at": now,
+        },
+        {
+            "source": "otodom",
+            "external_id": "68081516",
+            "listing_type": RentalListingType.SALE,
+            "city_slug": "lublin",
+            "room_count": 2,
+            "price_pln": 510_000,
+            "area_sqm": 50,
+            "price_per_sqm": 10_200,
+            "title": "Second copy",
+            "url": "https://example.com/68081516-v2",
+            "published_at": now,
+        },
+    ]
+
+    ingested = ingest_rental_listings(db, records, city_slugs=["lublin"])
+    assert ingested == 1
+
+    listing = db.scalar(
+        select(RentalListing).where(
+            RentalListing.source == "otodom",
+            RentalListing.external_id == "68081516",
+        )
+    )
+    assert listing is not None
+    assert float(listing.price_pln) == 510_000
+    assert listing.title == "Second copy"
+
+    db.close()

@@ -67,9 +67,18 @@ def refresh_rental_snapshots_from_listings(db: Session) -> dict[str, int]:
     return {"market_snapshots": market, "yield_snapshots": yields}
 
 
+def _dedupe_records(records: list[dict]) -> list[dict]:
+    """Keep one record per (source, external_id); later entries win."""
+    unique: dict[tuple[str, str], dict] = {}
+    for record in records:
+        key = (record["source"], str(record["external_id"]))
+        unique[key] = record
+    return list(unique.values())
+
+
 def _upsert_listings(db: Session, records: list[dict], *, now: datetime) -> int:
     count = 0
-    for record in records:
+    for record in _dedupe_records(records):
         listing_type = record["listing_type"]
         if isinstance(listing_type, str):
             listing_type = RentalListingType(listing_type)
