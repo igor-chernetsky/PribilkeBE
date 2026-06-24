@@ -8,7 +8,10 @@ from pribilka.api.deps import parse_market_country
 from pribilka.db.session import get_db
 from pribilka.models.enums import CountryCode
 from pribilka.models.weekly_digest import WeeklyDigest
-from pribilka.schemas.weekly_digest import WeeklyDigestResponse
+from pribilka.schemas.weekly_digest import (
+    WeeklyDigestResponse,
+    WeeklyDigestSummaryResponse,
+)
 from pribilka.services.weekly_digest import pick_digest_content
 
 router = APIRouter()
@@ -28,6 +31,28 @@ def _to_response(digest: WeeklyDigest, locale: str) -> WeeklyDigestResponse:
         source=digest.source,
         generated_at=digest.created_at,
     )
+
+
+@router.get("/archive", response_model=list[WeeklyDigestSummaryResponse])
+def list_weekly_digests(
+    country: CountryCode = Depends(parse_market_country),
+    limit: int = Query(12, ge=1, le=52),
+    db: Session = Depends(get_db),
+):
+    digests = db.scalars(
+        select(WeeklyDigest)
+        .where(WeeklyDigest.country == country)
+        .order_by(WeeklyDigest.week_start.desc())
+        .limit(limit)
+    ).all()
+    return [
+        WeeklyDigestSummaryResponse(
+            id=digest.id,
+            week_start=digest.week_start,
+            week_end=digest.week_end,
+        )
+        for digest in digests
+    ]
 
 
 @router.get("/latest", response_model=WeeklyDigestResponse)

@@ -15,6 +15,12 @@ class WeeklyDigestContent(BaseModel):
     sections: list[DigestSection] = Field(default_factory=list)
 
 
+class WeeklyDigestSummaryResponse(BaseModel):
+    id: UUID
+    week_start: date
+    week_end: date
+
+
 class WeeklyDigestResponse(BaseModel):
     id: UUID
     country: str
