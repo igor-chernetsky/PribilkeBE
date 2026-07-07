@@ -7,7 +7,7 @@ from pribilka.services.collector_alerts import report_deposit_parse_results
 @patch("pribilka.services.collector_alerts.get_redis")
 @patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_alert_sent_on_parser_error(mock_telegram, mock_get_redis):
-    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
+    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None), incr=MagicMock(return_value=3))
     mock_telegram.return_value = True
 
     results = [
@@ -29,7 +29,7 @@ def test_alert_sent_on_parser_error(mock_telegram, mock_get_redis):
 @patch("pribilka.services.collector_alerts.get_redis")
 @patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_alert_suppressed_by_cooldown(mock_telegram, mock_get_redis):
-    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value="1"))
+    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value="1"), incr=MagicMock(return_value=1))
 
     results = [
         ParserResult(
@@ -146,7 +146,7 @@ def test_rental_city_gap_alert_sent(mock_telegram, mock_get_redis):
 @patch("pribilka.services.collector_alerts.get_redis")
 @patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_no_alert_for_supplementary_empty_parser(mock_telegram, mock_get_redis):
-    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
+    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None), incr=MagicMock(return_value=1))
 
     results = [
         ParserResult(
@@ -172,7 +172,7 @@ def test_no_alert_for_supplementary_empty_parser(mock_telegram, mock_get_redis):
 @patch("pribilka.services.collector_alerts.get_redis")
 @patch("pribilka.services.collector_alerts.send_admin_telegram")
 def test_no_alert_when_all_ok(mock_telegram, mock_get_redis):
-    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None))
+    mock_get_redis.return_value = MagicMock(get=MagicMock(return_value=None), incr=MagicMock(return_value=1))
 
     results = [
         ParserResult(
@@ -186,3 +186,61 @@ def test_no_alert_when_all_ok(mock_telegram, mock_get_redis):
     report_deposit_parse_results(results, total_records=5)
 
     mock_telegram.assert_not_called()
+
+
+@patch("pribilka.services.collector_alerts.get_settings")
+@patch("pribilka.services.collector_alerts.get_redis")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
+def test_deposit_transient_error_waits_for_threshold(mock_telegram, mock_get_redis, mock_get_settings):
+    redis_client = MagicMock(get=MagicMock(return_value=None), incr=MagicMock(return_value=1))
+    mock_get_redis.return_value = redis_client
+    mock_get_settings.return_value = MagicMock(
+        collector_alert_cooldown_hours=12,
+        deposit_transient_error_alert_threshold=3,
+        admin_webhook_url=None,
+    )
+
+    results = [
+        ParserResult(
+            offers=[],
+            parser_name="SantanderDepositParser",
+            institution_name="Santander Bank Polska",
+            status=ParseStatus.ERROR,
+            error_message="HTTP 503",
+            transient_error=True,
+        )
+    ]
+
+    report_deposit_parse_results(results, total_records=0)
+
+    mock_telegram.assert_not_called()
+
+
+@patch("pribilka.services.collector_alerts.get_settings")
+@patch("pribilka.services.collector_alerts.get_redis")
+@patch("pribilka.services.collector_alerts.send_admin_telegram")
+def test_deposit_transient_error_alerts_on_threshold(mock_telegram, mock_get_redis, mock_get_settings):
+    redis_client = MagicMock(get=MagicMock(return_value=None), incr=MagicMock(return_value=3))
+    mock_get_redis.return_value = redis_client
+    mock_get_settings.return_value = MagicMock(
+        collector_alert_cooldown_hours=12,
+        deposit_transient_error_alert_threshold=3,
+        admin_webhook_url=None,
+    )
+    mock_telegram.return_value = True
+
+    results = [
+        ParserResult(
+            offers=[],
+            parser_name="SantanderDepositParser",
+            institution_name="Santander Bank Polska",
+            status=ParseStatus.ERROR,
+            error_message="HTTP 503",
+            transient_error=True,
+        )
+    ]
+
+    report_deposit_parse_results(results, total_records=0)
+
+    mock_telegram.assert_called_once()
+    assert "powtórzenia pod rząd" in mock_telegram.call_args[0][0]

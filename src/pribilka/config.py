@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     admin_telegram_chat_id: str | None = None
     admin_webhook_url: str | None = None
     collector_alert_cooldown_hours: int = 12
+    deposit_transient_error_alert_threshold: int = 3
 
     # Admin read API (collector status, etc.)
     admin_api_key: str | None = None

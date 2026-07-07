@@ -11,7 +11,7 @@ from pribilka.models.enums import CountryCode
 from pribilka.models.notification import Notification
 from pribilka.models.user_alert import UserAlert
 from pribilka.models.weekly_digest import WeeklyDigest
-from pribilka.schemas.weekly_digest import DigestSection, WeeklyDigestContent
+from pribilka.schemas.weekly_digest import DigestHighlights, DigestSection, WeeklyDigestContent
 from pribilka.services import market_data
 from pribilka.services.push_notifications import send_push_to_user
 from pribilka.services.telegram import send_admin_telegram
@@ -198,6 +198,42 @@ def _rental_body(stats: dict, locale: str) -> str:
     return f"{intro} {detail}"
 
 
+def build_digest_highlights(stats: dict, locale: str) -> DigestHighlights:
+    deposits = stats.get("deposits") or {}
+    bonds = stats.get("bonds") or {}
+    gold = stats.get("gold") or {}
+    rental = stats.get("rental") or {}
+
+    gold_change_percent = None
+    spot_now = gold.get("spot_now")
+    spot_start = gold.get("spot_start")
+    if spot_now is not None and spot_start not in (None, 0):
+        gold_change_percent = (float(spot_now) - float(spot_start)) / float(spot_start) * 100
+
+    rental_leader_city = None
+    rental_leader_yield = None
+    if rental.get("available"):
+        leaders = rental.get("top_yield_cities") or rental.get("cities") or []
+        if leaders:
+            leader = leaders[0]
+            rental_leader_city = _city_name(leader, locale)
+            rental_leader_yield = leader.get("yield_now")
+
+    return DigestHighlights(
+        best_deposit_rate=deposits.get("best_now"),
+        best_bond_yield=bonds.get("best_now"),
+        gold_change_percent=gold_change_percent,
+        rental_leader_city=rental_leader_city,
+        rental_leader_yield=rental_leader_yield,
+    )
+
+
+def _finalize_content_dict(data: dict, stats: dict, locale: str) -> dict:
+    finalized = dict(data)
+    finalized["highlights"] = build_digest_highlights(stats, locale).model_dump()
+    return finalized
+
+
 def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
     week_start = stats["week_start"]
     week_end = stats["week_end"]
@@ -357,7 +393,10 @@ def _parse_openai_payload(
 
     if not en_data and not pl_data:
         return None
-    return content_en, content_pl
+    return (
+        _finalize_content_dict(content_en, stats, "en"),
+        _finalize_content_dict(content_pl, stats, "pl"),
+    )
 
 
 def _build_openai_content(stats: dict) -> tuple[dict, dict] | None:
@@ -434,8 +473,16 @@ def generate_weekly_digest(
         content_en, content_pl = openai_content
         source = "openai"
     else:
-        content_en = _content_to_dict(_build_template_content(stats, "en"))
-        content_pl = _content_to_dict(_build_template_content(stats, "pl"))
+        content_en = _finalize_content_dict(
+            _content_to_dict(_build_template_content(stats, "en")),
+            stats,
+            "en",
+        )
+        content_pl = _finalize_content_dict(
+            _content_to_dict(_build_template_content(stats, "pl")),
+            stats,
+            "pl",
+        )
 
     digest = WeeklyDigest(
         country=country,

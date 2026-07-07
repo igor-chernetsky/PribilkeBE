@@ -9,10 +9,19 @@ class DigestSection(BaseModel):
     body: str
 
 
+class DigestHighlights(BaseModel):
+    best_deposit_rate: float | None = None
+    best_bond_yield: float | None = None
+    gold_change_percent: float | None = None
+    rental_leader_city: str | None = None
+    rental_leader_yield: float | None = None
+
+
 class WeeklyDigestContent(BaseModel):
     title: str
     summary: str
     sections: list[DigestSection] = Field(default_factory=list)
+    highlights: DigestHighlights | None = None
 
 
 class WeeklyDigestSummaryResponse(BaseModel):
@@ -30,5 +39,6 @@ class WeeklyDigestResponse(BaseModel):
     title: str
     summary: str
     sections: list[DigestSection]
+    highlights: DigestHighlights | None = None
     source: str
     generated_at: datetime

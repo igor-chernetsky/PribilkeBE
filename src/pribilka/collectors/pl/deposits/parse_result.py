@@ -18,6 +18,7 @@ class ParserResult:
     status: ParseStatus
     error_message: str | None = None
     alert_on_empty: bool = True
+    transient_error: bool = False
 
     @property
     def offer_count(self) -> int:

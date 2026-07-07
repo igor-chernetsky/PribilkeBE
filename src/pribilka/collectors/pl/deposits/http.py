@@ -1,5 +1,6 @@
 import io
 import logging
+import time
 
 import httpx
 
@@ -41,11 +42,10 @@ def fetch_text(
     timeout: float = 30.0,
     headers: dict[str, str] | None = None,
 ) -> str:
-    response = httpx.get(
-        url,
-        headers=headers or DEFAULT_HEADERS,
+    response = _request_with_retry(
+        url=url,
         timeout=timeout,
-        follow_redirects=True,
+        headers=headers or DEFAULT_HEADERS,
     )
     response.raise_for_status()
     return response.text
@@ -56,11 +56,10 @@ def fetch_bytes(
     timeout: float = 30.0,
     headers: dict[str, str] | None = None,
 ) -> bytes:
-    response = httpx.get(
-        url,
-        headers=headers or DEFAULT_HEADERS,
+    response = _request_with_retry(
+        url=url,
         timeout=timeout,
-        follow_redirects=True,
+        headers=headers or DEFAULT_HEADERS,
     )
     response.raise_for_status()
     return response.content
@@ -71,17 +70,69 @@ def fetch_json(
     timeout: float = 30.0,
     headers: dict[str, str] | None = None,
 ) -> object:
-    response = httpx.get(
-        url,
+    response = _request_with_retry(
+        url=url,
+        timeout=timeout,
         headers={
             **(headers or DEFAULT_HEADERS),
             "Accept": "application/json",
         },
-        timeout=timeout,
-        follow_redirects=True,
     )
     response.raise_for_status()
     return response.json()
+
+
+def _request_with_retry(
+    *,
+    url: str,
+    timeout: float,
+    headers: dict[str, str],
+    max_attempts: int = 3,
+    base_delay_seconds: float = 1.2,
+) -> httpx.Response:
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = httpx.get(
+                url,
+                headers=headers,
+                timeout=timeout,
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as exc:
+            last_exc = exc
+            status = exc.response.status_code
+            if status not in {408, 425, 429, 500, 502, 503, 504} or attempt == max_attempts:
+                raise
+            delay = base_delay_seconds * attempt
+            logger.warning(
+                "Retrying %s after HTTP %s (attempt %d/%d, sleep %.1fs)",
+                url,
+                status,
+                attempt,
+                max_attempts,
+                delay,
+            )
+            time.sleep(delay)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            last_exc = exc
+            if attempt == max_attempts:
+                raise
+            delay = base_delay_seconds * attempt
+            logger.warning(
+                "Retrying %s after network error %s (attempt %d/%d, sleep %.1fs)",
+                url,
+                type(exc).__name__,
+                attempt,
+                max_attempts,
+                delay,
+            )
+            time.sleep(delay)
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("Unexpected retry loop state")
 
 
 def extract_pdf_text(content: bytes) -> str:

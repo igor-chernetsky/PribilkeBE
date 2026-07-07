@@ -1,6 +1,8 @@
 import logging
 from abc import ABC, abstractmethod
 
+import httpx
+
 from pribilka.collectors.pl.deposits.models import DepositOffer
 from pribilka.collectors.pl.deposits.parse_result import ParseStatus, ParserResult
 
@@ -12,6 +14,14 @@ class BankDepositParser(ABC):
     bank_slug: str
     source_name: str
     alert_on_empty: bool = True
+
+    @staticmethod
+    def _is_temporary_error(exc: Exception) -> bool:
+        if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
+            return True
+        if isinstance(exc, httpx.HTTPStatusError):
+            return exc.response.status_code in {408, 425, 429, 500, 502, 503, 504}
+        return False
 
     @abstractmethod
     def parse(self) -> list[DepositOffer]:
@@ -49,6 +59,7 @@ class BankDepositParser(ABC):
                 status=ParseStatus.ERROR,
                 error_message=str(exc),
                 alert_on_empty=self.alert_on_empty,
+                transient_error=self._is_temporary_error(exc),
             )
 
     def safe_parse(self) -> list[DepositOffer]:

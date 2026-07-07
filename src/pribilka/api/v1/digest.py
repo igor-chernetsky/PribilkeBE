@@ -28,6 +28,7 @@ def _to_response(digest: WeeklyDigest, locale: str) -> WeeklyDigestResponse:
         title=content.title,
         summary=content.summary,
         sections=content.sections,
+        highlights=content.highlights,
         source=digest.source,
         generated_at=digest.created_at,
     )

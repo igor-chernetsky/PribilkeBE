@@ -4,6 +4,7 @@ from pribilka.services.weekly_digest import (
     _build_template_content,
     _parse_openai_payload,
     _rental_body,
+    build_digest_highlights,
     format_digest_telegram_message,
 )
 
@@ -88,6 +89,22 @@ def test_rental_body_without_data():
     stats["rental"] = {"available": False}
     body = _rental_body(stats, "pl")
     assert "Brak danych" in body
+
+
+def test_build_digest_highlights_from_stats():
+    stats = _sample_stats()
+    stats["gold"]["spot_start"] = 280.0
+    stats["gold"]["spot_now"] = 285.0
+    stats["rental"]["top_yield_cities"] = stats["rental"]["cities"]
+
+    highlights = build_digest_highlights(stats, "pl")
+
+    assert highlights.best_deposit_rate == 7.2
+    assert highlights.best_bond_yield == 6.5
+    assert highlights.gold_change_percent is not None
+    assert abs(highlights.gold_change_percent - 1.7857) < 0.01
+    assert highlights.rental_leader_city == "Kraków"
+    assert highlights.rental_leader_yield == 5.6
 
 
 def test_parse_openai_payload_accepts_nested_locales():

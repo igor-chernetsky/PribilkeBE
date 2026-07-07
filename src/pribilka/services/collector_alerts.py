@@ -17,6 +17,8 @@ ALERT_KEY_PREFIX = "collector_alert"
 
 def report_deposit_parse_results(results: list[ParserResult], total_records: int) -> None:
     """Notify admin when parsers fail or return no data."""
+    transient_threshold = max(1, get_settings().deposit_transient_error_alert_threshold)
+    streaks = _update_deposit_failure_streaks(results)
     problems = [
         r
         for r in results
@@ -32,15 +34,27 @@ def report_deposit_parse_results(results: list[ParserResult], total_records: int
     lines = ["⚠️ *Pribilka — problem z kolektorem depozytów*"]
     for result in problems:
         if result.status == ParseStatus.ERROR:
+            streak = streaks.get(result.parser_name, 1)
+            if result.transient_error and streak < transient_threshold:
+                continue
+            error_label = "błąd tymczasowy HTTP/sieci" if result.transient_error else "błąd parsowania"
             lines.append(
-                f"• *{result.institution_name}* (`{result.parser_name}`): błąd parsowania\n"
+                f"• *{result.institution_name}* (`{result.parser_name}`): {error_label}\n"
                 f"  `{result.error_message or 'unknown'}`"
             )
+            if result.transient_error:
+                lines.append(
+                    f"  powtórzenia pod rząd: *{streak}* (próg alarmu: {transient_threshold})"
+                )
         elif result.status == ParseStatus.EMPTY:
             lines.append(
                 f"• *{result.institution_name}* (`{result.parser_name}`): 0 ofert "
                 f"(możliwa zmiana layoutu strony)"
             )
+
+    if len(lines) == 1:
+        logger.info("Deposit parser transient errors below threshold; alert skipped")
+        return
 
     if total_records == 0:
         lines.append(f"\nŁącznie zapisano *0* depozytów po tym przebiegu.")
@@ -145,6 +159,33 @@ def _send_with_cooldown(message: str, alert_key: str) -> None:
         redis_client.setex(redis_key, cooldown_seconds, "1")
     except Exception:
         logger.exception("Failed to set alert cooldown in Redis")
+
+
+def _update_deposit_failure_streaks(results: list[ParserResult]) -> dict[str, int]:
+    streaks: dict[str, int] = {}
+    try:
+        redis_client = get_redis()
+    except Exception:
+        logger.exception("Redis unavailable for deposit failure streak tracking")
+        return streaks
+
+    for result in results:
+        streak_key = f"{ALERT_KEY_PREFIX}:deposit_streak:{result.parser_name}"
+        if result.status == ParseStatus.ERROR:
+            try:
+                streak = redis_client.incr(streak_key)
+                redis_client.expire(streak_key, 7 * 24 * 3600)
+            except Exception:
+                logger.exception("Failed to increment deposit failure streak for %s", result.parser_name)
+                streak = 1
+            streaks[result.parser_name] = int(streak)
+        else:
+            try:
+                redis_client.delete(streak_key)
+            except Exception:
+                logger.exception("Failed to reset deposit failure streak for %s", result.parser_name)
+            streaks[result.parser_name] = 0
+    return streaks
 
 
 def _send_webhook(message: str) -> bool:
