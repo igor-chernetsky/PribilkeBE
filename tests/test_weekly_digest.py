@@ -13,15 +13,21 @@ def _sample_stats():
     return {
         "week_start": "2026-06-01",
         "week_end": "2026-06-07",
-        "summary": {"usd_pln": 4.05},
+        "summary": {
+            "usd_pln": 4.05,
+            "best_deposit_rate": 7.2,
+            "best_bond_yield": 6.5,
+        },
         "deposits": {
-            "best_now": 7.2,
+            "best_current": 7.2,
+            "best_now": 6.0,
             "best_delta_pp": 0.3,
             "avg_now": 5.1,
             "avg_delta_pp": 0.1,
         },
         "bonds": {
-            "best_now": 6.5,
+            "best_current": 6.5,
+            "best_now": 5.6,
             "best_delta_pp": -0.1,
             "avg_now": 5.8,
             "avg_delta_pp": 0.0,
@@ -105,6 +111,19 @@ def test_build_digest_highlights_from_stats():
     assert abs(highlights.gold_change_percent - 1.7857) < 0.01
     assert highlights.rental_leader_city == "Kraków"
     assert highlights.rental_leader_yield == 5.6
+
+
+def test_template_deposits_use_best_current_not_trend():
+    stats = _sample_stats()
+    stats["rental"]["top_yield_cities"] = stats["rental"]["cities"][:1]
+    stats["deposits"]["best_current"] = 6.8
+    stats["deposits"]["best_now"] = 6.0
+
+    pl = _build_template_content(stats, "pl")
+    deposits_section = next(s for s in pl.sections if s.heading == "Lokaty")
+
+    assert "6.8%" in deposits_section.body
+    assert "6.0%" not in deposits_section.body
 
 
 def test_parse_openai_payload_accepts_nested_locales():

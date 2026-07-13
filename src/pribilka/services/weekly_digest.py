@@ -61,6 +61,11 @@ def collect_weekly_stats(db: Session, country: CountryCode) -> dict:
             "gold_spot": summary.gold_spot_price,
         },
         "deposits": {
+            # Live max from active offers (matches market summary / top picks).
+            "best_current": (
+                float(summary.best_deposit_rate) if summary.best_deposit_rate is not None else None
+            ),
+            # Trend series endpoints (hourly buckets in rate_history).
             "best_now": dep_best_now,
             "best_start": dep_best_start,
             "best_delta_pp": dep_best_delta,
@@ -69,6 +74,9 @@ def collect_weekly_stats(db: Session, country: CountryCode) -> dict:
             "avg_delta_pp": dep_avg_delta,
         },
         "bonds": {
+            "best_current": (
+                float(summary.best_bond_yield) if summary.best_bond_yield is not None else None
+            ),
             "best_now": bond_best_now,
             "best_start": bond_best_start,
             "best_delta_pp": bond_best_delta,
@@ -219,9 +227,13 @@ def build_digest_highlights(stats: dict, locale: str) -> DigestHighlights:
             rental_leader_city = _city_name(leader, locale)
             rental_leader_yield = leader.get("yield_now")
 
+    summary = stats.get("summary") or {}
+    best_deposit = deposits.get("best_current") or summary.get("best_deposit_rate")
+    best_bond = bonds.get("best_current") or summary.get("best_bond_yield")
+
     return DigestHighlights(
-        best_deposit_rate=deposits.get("best_now"),
-        best_bond_yield=bonds.get("best_now"),
+        best_deposit_rate=best_deposit,
+        best_bond_yield=best_bond,
         gold_change_percent=gold_change_percent,
         rental_leader_city=rental_leader_city,
         rental_leader_yield=rental_leader_yield,
@@ -252,8 +264,9 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
             DigestSection(
                 heading="Lokaty",
                 body=(
-                    f"Najlepsza obserwowana stawka: {deposits['best_now'] or 'brak danych'}%. "
-                    f"Zmiana vs tydzień temu: {_format_pp(deposits['best_delta_pp'])}. "
+                    f"Najlepsza dostępna stawka: {deposits['best_current'] or 'brak danych'}%. "
+                    f"Zmiana obserwowanej stawki w trendzie vs tydzień temu: "
+                    f"{_format_pp(deposits['best_delta_pp'])}. "
                     f"Średnia rynkowa: {deposits['avg_now'] or 'brak danych'}% "
                     f"({_format_pp(deposits['avg_delta_pp'])})."
                 ),
@@ -261,8 +274,9 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
             DigestSection(
                 heading="Obligacje skarbowe",
                 body=(
-                    f"Najlepsza obserwowana rentowność: {bonds['best_now'] or 'brak danych'}%. "
-                    f"Zmiana vs tydzień temu: {_format_pp(bonds['best_delta_pp'])}. "
+                    f"Najlepsza dostępna rentowność: {bonds['best_current'] or 'brak danych'}%. "
+                    f"Zmiana obserwowanej rentowności w trendzie vs tydzień temu: "
+                    f"{_format_pp(bonds['best_delta_pp'])}. "
                     f"Średnia rynkowa: {bonds['avg_now'] or 'brak danych'}%."
                 ),
             ),
@@ -294,8 +308,8 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
         DigestSection(
             heading="Deposits",
             body=(
-                f"Best observed rate: {deposits['best_now'] or 'n/a'}%. "
-                f"Week-over-week change: {_format_pp(deposits['best_delta_pp'])}. "
+                f"Best available rate: {deposits['best_current'] or 'n/a'}%. "
+                f"Tracked best-rate trend vs last week: {_format_pp(deposits['best_delta_pp'])}. "
                 f"Market average: {deposits['avg_now'] or 'n/a'}% "
                 f"({_format_pp(deposits['avg_delta_pp'])})."
             ),
@@ -303,8 +317,8 @@ def _build_template_content(stats: dict, locale: str) -> WeeklyDigestContent:
         DigestSection(
             heading="Government bonds",
             body=(
-                f"Best observed yield: {bonds['best_now'] or 'n/a'}%. "
-                f"Week-over-week change: {_format_pp(bonds['best_delta_pp'])}. "
+                f"Best available yield: {bonds['best_current'] or 'n/a'}%. "
+                f"Tracked best-yield trend vs last week: {_format_pp(bonds['best_delta_pp'])}. "
                 f"Market average: {bonds['avg_now'] or 'n/a'}%."
             ),
         ),
@@ -414,6 +428,9 @@ def _build_openai_content(stats: dict) -> tuple[dict, dict] | None:
             "Each value must be an object: "
             '{"title":"...","summary":"...","sections":[{"heading":"...","body":"..."}]}\n'
             "Use exactly 5 sections in this order: deposits, government bonds, gold & FX, real estate, top picks.\n"
+            "For deposits/bonds sections use deposits.best_current / bonds.best_current as the current best rate.\n"
+            "Use deposits.best_delta_pp / bonds.best_delta_pp only for week-over-week trend wording.\n"
+            "Top picks must stay consistent with best_current and top_deposits / top_bonds.\n"
             "2-3 sentences per section body. No buy/sell advice. No invented numbers.\n"
             f"STATS:\n{json.dumps(stats, default=str)}"
         )
