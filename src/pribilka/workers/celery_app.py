@@ -43,6 +43,11 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=8, day_of_week="monday"),
             "args": ["PL"],
         },
+        "daily-market-brief": {
+            "task": "pribilka.workers.tasks.send_daily_market_brief_task",
+            "schedule": crontab(minute=0, hour=9),
+            "args": ["PL"],
+        },
     },
 )
 

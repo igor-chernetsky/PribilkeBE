@@ -15,6 +15,7 @@ from pribilka.services.collector_status import save_collector_run
 from pribilka.services.ingestion import ingest_bonds, ingest_deposits, ingest_fx, ingest_gold
 from pribilka.services.rental_city_coverage import assess_rental_city_coverage
 from pribilka.services.rental_ingestion import ingest_rental_listings
+from pribilka.services.daily_market_brief import send_daily_market_brief
 from pribilka.services.weekly_digest import generate_weekly_digest, notify_weekly_digest_subscribers
 from pribilka.workers.celery_app import celery_app
 
@@ -127,6 +128,20 @@ def generate_weekly_digest_task(country_code: str = "PL") -> dict:
             "digest_id": str(digest.id) if digest else None,
             "notified": notified,
             "source": digest.source if digest else None,
+        }
+    finally:
+        db.close()
+
+
+@celery_app.task(name="pribilka.workers.tasks.send_daily_market_brief_task")
+def send_daily_market_brief_task(country_code: str = "PL") -> dict:
+    country = CountryCode(country_code)
+    db = SessionLocal()
+    try:
+        result = send_daily_market_brief(db, country=country)
+        return {
+            "date": result["date"],
+            "sent": result["sent"],
         }
     finally:
         db.close()
