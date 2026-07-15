@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -16,13 +18,16 @@ from pribilka.models.enums import AssetClass, CountryCode, MacroIndicatorKind
 logger = logging.getLogger(__name__)
 
 NBP_RATES_XML_URL = "https://static.nbp.pl/dane/stopy/stopy_procentowe_archiwum.xml"
+# BIS central-bank policy rate for Poland (NBP 7-day bill / reference rate).
+# Used when static.nbp.pl is blocked (Incapsula 403).
+BIS_CBPOL_DAILY_URL = "https://stats.bis.org/api/v1/data/WS_CBPOL/D.PL?format=csv&detail=dataonly"
 EUROSTAT_HICP_URL = (
     "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hicp_manr"
 )
 
 DEFAULT_HEADERS = {
     "User-Agent": "ZyskRadar/1.0 (+https://pribilka.webredirect.org)",
-    "Accept": "application/xml,application/json,text/xml,*/*",
+    "Accept": "application/xml,application/json,text/csv,text/xml,*/*",
 }
 
 
@@ -30,7 +35,7 @@ def _parse_decimal(raw: str | None) -> Decimal | None:
     if raw is None:
         return None
     text = raw.strip().replace(",", ".").replace("%", "")
-    if not text:
+    if not text or text.lower() in {"nan", "null", "."}:
         return None
     try:
         return Decimal(text)
@@ -47,12 +52,6 @@ def parse_nbp_reference_rates_xml(xml_text: str) -> list[dict]:
 
     root = ET.fromstring(xml_text)
     rows: list[dict] = []
-
-    for entry in root.iter():
-        tag = entry.tag.lower().split("}")[-1]
-        if tag not in {"pozycja", "entry", "item", "row"}:
-            # Some archives nest rate fields directly under date-bearing nodes.
-            pass
 
     # Prefer explicit <pozycja> / <pozycje>/<pozycja> layout used by NBP.
     candidates = list(root.findall(".//pozycja"))
@@ -117,6 +116,52 @@ def parse_nbp_reference_rates_xml(xml_text: str) -> list[dict]:
     return [by_date[key] for key in sorted(by_date)]
 
 
+def parse_bis_cbpol_csv(csv_text: str) -> list[dict]:
+    """Parse BIS WS_CBPOL daily CSV into NBP policy-rate step changes."""
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if not reader.fieldnames:
+        return []
+
+    # Normalize header keys (BIS may vary casing).
+    field_map = {name.lower(): name for name in reader.fieldnames}
+    time_key = field_map.get("time_period")
+    value_key = field_map.get("obs_value")
+    if not time_key or not value_key:
+        return []
+
+    points: list[tuple[date, float]] = []
+    for row in reader:
+        as_of = _parse_date((row.get(time_key) or "").strip())
+        rate = _parse_decimal(row.get(value_key))
+        if as_of is None or rate is None:
+            continue
+        points.append((as_of, float(rate)))
+
+    if not points:
+        return []
+
+    points.sort(key=lambda item: item[0])
+    # Collapse flat stretches to change dates (+ keep the latest observation).
+    stepped: list[tuple[date, float]] = [points[0]]
+    for as_of, value in points[1:]:
+        if value != stepped[-1][1]:
+            stepped.append((as_of, value))
+    if stepped[-1][0] != points[-1][0]:
+        stepped.append(points[-1])
+
+    return [
+        {
+            "kind": MacroIndicatorKind.NBP_REFERENCE_RATE,
+            "value": value,
+            "as_of_date": as_of,
+            "source_name": "bis_cbpol",
+            "source_url": BIS_CBPOL_DAILY_URL,
+            "country": CountryCode.PL,
+        }
+        for as_of, value in stepped
+    ]
+
+
 def _parse_date(raw: str) -> date | None:
     text = raw.strip()
     for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d.%m.%Y", "%Y/%m/%d"):
@@ -124,6 +169,10 @@ def _parse_date(raw: str) -> date | None:
             return datetime.strptime(text[:19], fmt).date()
         except ValueError:
             continue
+    # Monthly period "2026-06" → last day of month.
+    month_match = re.fullmatch(r"(\d{4})-(\d{2})", text)
+    if month_match:
+        return _period_to_month_end(text)
     match = re.search(r"(\d{4})-(\d{2})-(\d{2})", text)
     if match:
         return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
@@ -208,10 +257,39 @@ class PolandMacroCollector(BaseCollector):
         return records
 
     def _collect_nbp_reference_rates(self) -> list[dict]:
-        response = httpx.get(NBP_RATES_XML_URL, headers=DEFAULT_HEADERS, timeout=60.0)
+        rows = self._try_nbp_xml()
+        if rows:
+            return rows
+        logger.warning("NBP XML unavailable or empty; falling back to BIS WS_CBPOL")
+        return self._collect_bis_cbpol()
+
+    def _try_nbp_xml(self) -> list[dict]:
+        try:
+            response = httpx.get(NBP_RATES_XML_URL, headers=DEFAULT_HEADERS, timeout=45.0)
+            if response.status_code >= 400:
+                logger.warning("NBP XML HTTP %s", response.status_code)
+                return []
+            content_type = (response.headers.get("content-type") or "").lower()
+            text = response.text
+            if "html" in content_type or "<html" in text[:200].lower():
+                logger.warning("NBP XML returned HTML (likely WAF block)")
+                return []
+            rows = parse_nbp_reference_rates_xml(text)
+            logger.info("NBP reference rates parsed: %d rows", len(rows))
+            return rows
+        except Exception:
+            logger.exception("NBP XML fetch/parse failed")
+            return []
+
+    def _collect_bis_cbpol(self) -> list[dict]:
+        response = httpx.get(
+            BIS_CBPOL_DAILY_URL,
+            headers={**DEFAULT_HEADERS, "Accept": "text/csv,*/*"},
+            timeout=60.0,
+        )
         response.raise_for_status()
-        rows = parse_nbp_reference_rates_xml(response.text)
-        logger.info("NBP reference rates parsed: %d rows", len(rows))
+        rows = parse_bis_cbpol_csv(response.text)
+        logger.info("BIS CBPOL policy rates parsed: %d step points", len(rows))
         return rows
 
     def _collect_eurostat_cpi(self) -> list[dict]:

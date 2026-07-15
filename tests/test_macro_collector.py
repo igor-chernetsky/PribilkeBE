@@ -1,4 +1,5 @@
 from pribilka.collectors.macro_collector import (
+    parse_bis_cbpol_csv,
     parse_eurostat_hicp_json,
     parse_nbp_reference_rates_xml,
 )
@@ -33,6 +34,25 @@ def test_parse_nbp_compact_attribute_layout():
     rows = parse_nbp_reference_rates_xml(xml)
     assert len(rows) == 1
     assert rows[0]["value"] == 6.0
+
+
+def test_parse_bis_cbpol_csv_collapses_flat_stretches():
+    csv_text = """FREQ,REF_AREA,TIME_PERIOD,OBS_VALUE
+D,PL,2026-06-29,3.75
+D,PL,2026-06-30,3.75
+D,PL,2026-07-01,3.75
+D,PL,2026-07-02,NaN
+D,PL,2026-07-03,3.50
+D,PL,2026-07-04,3.50
+D,PL,2026-07-06,3.50
+"""
+    rows = parse_bis_cbpol_csv(csv_text)
+    assert [r["value"] for r in rows] == [3.75, 3.50, 3.50]
+    assert rows[0]["as_of_date"].isoformat() == "2026-06-29"
+    assert rows[1]["as_of_date"].isoformat() == "2026-07-03"
+    assert rows[2]["as_of_date"].isoformat() == "2026-07-06"
+    assert rows[0]["source_name"] == "bis_cbpol"
+    assert rows[0]["kind"].value == "nbp_reference_rate"
 
 
 def test_parse_eurostat_hicp_json():
