@@ -104,6 +104,23 @@ _SCHEMA_PATCHES = (
     """,
     "CREATE INDEX IF NOT EXISTS ix_rental_yield_snapshots_city_slug ON rental_yield_snapshots (city_slug)",
     "CREATE INDEX IF NOT EXISTS ix_rental_yield_snapshots_period_start ON rental_yield_snapshots (period_start)",
+    """
+    CREATE TABLE IF NOT EXISTS macro_indicators (
+        id UUID PRIMARY KEY,
+        country VARCHAR(16) NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        value NUMERIC(8, 4) NOT NULL,
+        as_of_date DATE NOT NULL,
+        source_name VARCHAR(64) NOT NULL,
+        source_url VARCHAR(512),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_macro_country_kind_date UNIQUE (country, kind, as_of_date)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_macro_indicators_country ON macro_indicators (country)",
+    "CREATE INDEX IF NOT EXISTS ix_macro_indicators_kind ON macro_indicators (kind)",
+    "CREATE INDEX IF NOT EXISTS ix_macro_indicators_as_of_date ON macro_indicators (as_of_date)",
 )
 
 

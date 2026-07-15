@@ -12,6 +12,7 @@ from pribilka.api.v1 import (
     fx,
     gold,
     insights,
+    macro,
     notifications,
     rental,
     trends,
@@ -28,6 +29,7 @@ market_router.include_router(analytics.router, tags=["analytics"])
 market_router.include_router(trends.router, prefix="/trends", tags=["trends"])
 market_router.include_router(digest.router, prefix="/digest", tags=["digest"])
 market_router.include_router(insights.router, prefix="/insights", tags=["insights"])
+market_router.include_router(macro.router, prefix="/macro", tags=["macro"])
 market_router.include_router(rental.router, prefix="/rental", tags=["rental"])
 
 api_router.include_router(market_router, tags=["markets"])

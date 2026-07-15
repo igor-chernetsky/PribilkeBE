@@ -5,6 +5,7 @@ from pribilka.models.bond import Bond
 from pribilka.models.financial_instrument import FinancialInstrument
 from pribilka.models.fx_rate import FxRate
 from pribilka.models.gold_price import GoldPrice
+from pribilka.models.macro_indicator import MacroIndicator
 from pribilka.models.market_event import MarketEvent
 from pribilka.models.notification import Notification
 from pribilka.models.rate_history import RateHistory
@@ -23,6 +24,7 @@ __all__ = [
     "FinancialInstrument",
     "FxRate",
     "GoldPrice",
+    "MacroIndicator",
     "MarketEvent",
     "Notification",
     "RateHistory",

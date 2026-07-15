@@ -9,6 +9,11 @@ class AssetClass(str, enum.Enum):
     FOREIGN_EXCHANGE = "foreign_exchange"
 
 
+class MacroIndicatorKind(str, enum.Enum):
+    NBP_REFERENCE_RATE = "nbp_reference_rate"
+    CPI_YOY = "cpi_yoy"
+
+
 class CountryCode(str, enum.Enum):
     PL = "PL"
     DE = "DE"

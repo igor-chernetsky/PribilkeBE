@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 STATUS_KEY_PREFIX = "collector:status"
 STATUS_TTL_SECONDS = 7 * 24 * 3600  # 7 days
 
-COLLECTOR_KEYS = ("deposit", "bond", "fx", "gold", "rental")
+COLLECTOR_KEYS = ("deposit", "bond", "fx", "gold", "rental", "macro")
 
 
 @dataclass

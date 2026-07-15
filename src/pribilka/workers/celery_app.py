@@ -38,6 +38,11 @@ celery_app.conf.update(
             "schedule": crontab(minute=30, hour="*/3"),
             "args": ["rental"],
         },
+        "collect-macro": {
+            "task": "pribilka.workers.tasks.run_collector",
+            "schedule": crontab(minute=20, hour=7),
+            "args": ["macro"],
+        },
         "weekly-digest": {
             "task": "pribilka.workers.tasks.generate_weekly_digest_task",
             "schedule": crontab(minute=0, hour=8, day_of_week="monday"),

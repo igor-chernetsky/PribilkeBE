@@ -134,6 +134,11 @@ class MarketSummaryResponse(BaseSchema):
     eur_pln_rate: float | None
     usd_pln_daily_change_percent: float | None = None
     eur_pln_daily_change_percent: float | None = None
+    nbp_reference_rate: float | None = None
+    nbp_reference_as_of: date | None = None
+    cpi_yoy: float | None = None
+    cpi_as_of: date | None = None
+    real_deposit_rate: float | None = None
     best_rental_yield: float | None = None
     best_rental_yield_city_slug: str | None = None
     best_rental_yield_city_name_pl: str | None = None

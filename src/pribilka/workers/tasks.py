@@ -5,6 +5,7 @@ from pribilka.collectors.bond_collector import PolandBondCollector
 from pribilka.collectors.deposit_collector import PolandDepositCollector
 from pribilka.collectors.fx_collector import NbpFxCollector
 from pribilka.collectors.gold_collector import PolandGoldCollector
+from pribilka.collectors.macro_collector import PolandMacroCollector
 from pribilka.collectors.rental_collector import PolandRentalCollector
 from pribilka.collectors.pl.rental.cities import current_rental_partition
 from pribilka.db.session import SessionLocal
@@ -13,6 +14,7 @@ from pribilka.services.alert_engine import evaluate_alerts
 from pribilka.services.collector_alerts import report_rental_city_data_gaps
 from pribilka.services.collector_status import save_collector_run
 from pribilka.services.ingestion import ingest_bonds, ingest_deposits, ingest_fx, ingest_gold
+from pribilka.services.macro_ingestion import ingest_macro_indicators
 from pribilka.services.rental_city_coverage import assess_rental_city_coverage
 from pribilka.services.rental_ingestion import ingest_rental_listings
 from pribilka.services.daily_market_brief import send_daily_market_brief
@@ -27,6 +29,7 @@ COLLECTOR_MAP = {
     "fx": (NbpFxCollector, ingest_fx),
     "gold": (PolandGoldCollector, ingest_gold),
     "rental": (PolandRentalCollector, ingest_rental_listings),
+    "macro": (PolandMacroCollector, ingest_macro_indicators),
 }
 
 

@@ -21,6 +21,7 @@ from pribilka.schemas.common import (
     MarketSummaryResponse,
 )
 from pribilka.services.institution_slugs import resolve_bank_slug
+from pribilka.services.macro_data import get_latest_macro_fields
 from pribilka.services.rental_market import RentalYieldGlance, get_rental_yield_glance
 from pribilka.services.risk_levels import resolve_risk_level
 
@@ -387,6 +388,7 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
 
     rental_glance = get_rental_yield_glance(db)
     digest_teaser = _build_digest_teaser(db, country, rental_glance)
+    macro = get_latest_macro_fields(db, country)
 
     return MarketSummaryResponse(
         country=country,
@@ -402,6 +404,11 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
         eur_pln_rate=eur_pln.mid_market_rate if eur_pln else None,
         usd_pln_daily_change_percent=usd_pln.daily_change_percent if usd_pln else None,
         eur_pln_daily_change_percent=eur_pln.daily_change_percent if eur_pln else None,
+        nbp_reference_rate=macro["nbp_reference_rate"],
+        nbp_reference_as_of=macro["nbp_reference_as_of"],
+        cpi_yoy=macro["cpi_yoy"],
+        cpi_as_of=macro["cpi_as_of"],
+        real_deposit_rate=macro["real_deposit_rate"],
         best_rental_yield=rental_glance.best_yield,
         best_rental_yield_city_slug=rental_glance.city_slug,
         best_rental_yield_city_name_pl=rental_glance.city_name_pl,
