@@ -373,10 +373,10 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
     fx_rates = list_fx_rates(db, country)
 
     usd_pln = next(
-        (r.mid_market_rate for r in fx_rates if r.base_currency == CurrencyCode.USD), None
+        (r for r in fx_rates if r.base_currency == CurrencyCode.USD), None
     )
     eur_pln = next(
-        (r.mid_market_rate for r in fx_rates if r.base_currency == CurrencyCode.EUR), None
+        (r for r in fx_rates if r.base_currency == CurrencyCode.EUR), None
     )
 
     latest_update = db.scalar(
@@ -398,8 +398,10 @@ def get_market_summary(db: Session, country: CountryCode | None = None) -> Marke
         avg_bond_yield=float(avg_bond_yield) if avg_bond_yield is not None else None,
         gold_spot_price=gold.spot_price if gold else None,
         gold_daily_change_percent=gold.daily_change_percent if gold else None,
-        usd_pln_rate=usd_pln,
-        eur_pln_rate=eur_pln,
+        usd_pln_rate=usd_pln.mid_market_rate if usd_pln else None,
+        eur_pln_rate=eur_pln.mid_market_rate if eur_pln else None,
+        usd_pln_daily_change_percent=usd_pln.daily_change_percent if usd_pln else None,
+        eur_pln_daily_change_percent=eur_pln.daily_change_percent if eur_pln else None,
         best_rental_yield=rental_glance.best_yield,
         best_rental_yield_city_slug=rental_glance.city_slug,
         best_rental_yield_city_name_pl=rental_glance.city_name_pl,

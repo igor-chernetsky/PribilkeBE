@@ -7,10 +7,12 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pribilka.models.enums import AssetClass, CountryCode
+from pribilka.models.enums import AssetClass, CountryCode, CurrencyCode
 from pribilka.models.financial_instrument import FinancialInstrument
+from pribilka.models.fx_rate import FxRate
 from pribilka.models.rate_history import RateHistory
 from pribilka.schemas.trends import (
+    FxTrendSeries,
     GoldTrendSeries,
     MarketTrendsHistoryResponse,
     TrendPoint,
@@ -165,6 +167,57 @@ def _gold_spot_series(
     return GoldTrendSeries(spot=spot)
 
 
+def _fx_pair_series(
+    db: Session,
+    *,
+    country: CountryCode,
+    base: CurrencyCode,
+    since: datetime,
+    days: int,
+) -> list[TrendPoint]:
+    from sqlalchemy import func
+
+    bucket = func.date_trunc("hour" if days <= 7 else "day", RateHistory.recorded_at).label("bucket")
+
+    rows = db.execute(
+        select(bucket, func.avg(RateHistory.value).label("mid"))
+        .join(FinancialInstrument, RateHistory.instrument_id == FinancialInstrument.id)
+        .join(FxRate, FxRate.instrument_id == FinancialInstrument.id)
+        .where(
+            FinancialInstrument.country == country,
+            FinancialInstrument.asset_class == AssetClass.FOREIGN_EXCHANGE,
+            FxRate.base_currency == base,
+            RateHistory.value_type == "mid_rate",
+            RateHistory.recorded_at >= since,
+        )
+        .group_by(bucket)
+        .order_by(bucket)
+    ).all()
+
+    return [
+        TrendPoint(value=float(row.mid), recorded_at=row.bucket)
+        for row in rows
+        if row.mid is not None
+    ]
+
+
+def _fx_series(
+    db: Session,
+    *,
+    country: CountryCode,
+    since: datetime,
+    days: int,
+) -> FxTrendSeries:
+    return FxTrendSeries(
+        usd_pln=_fx_pair_series(
+            db, country=country, base=CurrencyCode.USD, since=since, days=days
+        ),
+        eur_pln=_fx_pair_series(
+            db, country=country, base=CurrencyCode.EUR, since=since, days=days
+        ),
+    )
+
+
 def get_market_trends_history(
     db: Session,
     country: CountryCode,
@@ -189,10 +242,12 @@ def get_market_trends_history(
         days=days,
     )
     gold = _gold_spot_series(db, country=country, since=since, days=days)
+    fx = _fx_series(db, country=country, since=since, days=days)
 
     return MarketTrendsHistoryResponse(
         period_days=days,
         deposits=deposits,
         bonds=bonds,
         gold=gold,
+        fx=fx,
     )

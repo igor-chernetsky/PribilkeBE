@@ -132,6 +132,8 @@ class MarketSummaryResponse(BaseSchema):
     gold_daily_change_percent: float | None = None
     usd_pln_rate: float | None
     eur_pln_rate: float | None
+    usd_pln_daily_change_percent: float | None = None
+    eur_pln_daily_change_percent: float | None = None
     best_rental_yield: float | None = None
     best_rental_yield_city_slug: str | None = None
     best_rental_yield_city_name_pl: str | None = None
